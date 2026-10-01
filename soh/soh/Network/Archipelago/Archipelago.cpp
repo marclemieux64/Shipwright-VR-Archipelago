@@ -215,9 +215,9 @@ bool ArchipelagoClient::StartClient() {
 
         for (const APClient::NetworkItem& item : items) {
             ApItem apItem;
-            const std::string game = apClient->get_player_game(item.player);
+            apItem.gameName = apClient->get_player_game(item.player);
             apItem.itemName = apClient->get_item_name(item.item, AP_Client_consts::AP_GAME_NAME);
-            apItem.locationName = apClient->get_location_name(item.location, game);
+            apItem.locationName = apClient->get_location_name(item.location, apItem.gameName);
             apItem.playerName = apClient->get_player_alias(item.player);
             apItem.playerNumber = item.player;
             apItem.flags = item.flags;
@@ -235,9 +235,9 @@ bool ArchipelagoClient::StartClient() {
 
         for (const APClient::NetworkItem& item : items) {
             ApItem apItem;
-            const std::string game = apClient->get_player_game(item.player);
-            apItem.itemName = apClient->get_item_name(item.item, game);
-            apItem.hintName = get_random_group_from_item(apItem.itemName, item.flags, game);
+            apItem.gameName = apClient->get_player_game(item.player);
+            apItem.itemName = apClient->get_item_name(item.item, apItem.gameName);
+            apItem.hintName = get_random_group_from_item(apItem.itemName, item.flags, apItem.gameName);
             apItem.locationName = apClient->get_location_name(item.location, AP_Client_consts::AP_GAME_NAME);
             apItem.playerName = apClient->get_player_alias(item.player);
             apItem.playerNumber = item.player;
@@ -1566,6 +1566,9 @@ extern "C" void Archipelago_InitSaveFile() {
         SohUtils::CopyStringToCharArray(gSaveContext.ship.quest.data.archipelago.locations[rc].playerName,
                                         ArchipelagoClient::SanitizeName(scoutedItems[i].playerName),
                                         ARRAY_COUNT(gSaveContext.ship.quest.data.archipelago.locations[rc].playerName));
+        SohUtils::CopyStringToCharArray(gSaveContext.ship.quest.data.archipelago.locations[rc].gameName,
+                                        ArchipelagoClient::SanitizeName(scoutedItems[i].gameName),
+                                        ARRAY_COUNT(gSaveContext.ship.quest.data.archipelago.locations[rc].gameName));
     }
 }
 
@@ -1621,6 +1624,9 @@ void LoadArchipelagoData() {
                 SaveManager::Instance->LoadCharArray(
                     "playerName", gSaveContext.ship.quest.data.archipelago.locations[i].playerName,
                     ARRAY_COUNT(gSaveContext.ship.quest.data.archipelago.locations[i].playerName));
+                SaveManager::Instance->LoadCharArray(
+                    "gameName", gSaveContext.ship.quest.data.archipelago.locations[i].gameName,
+                    ARRAY_COUNT(gSaveContext.ship.quest.data.archipelago.locations[i].gameName));
             });
         });
 
@@ -1663,6 +1669,8 @@ void SaveArchipelagoData(SaveContext* saveContext, int sectionID, bool fullSave)
                                                 saveContext->ship.quest.data.archipelago.locations[i].hintName);
                 SaveManager::Instance->SaveData("playerName",
                                                 saveContext->ship.quest.data.archipelago.locations[i].playerName);
+                SaveManager::Instance->SaveData("gameName",
+                                                saveContext->ship.quest.data.archipelago.locations[i].gameName);
             });
         });
 
@@ -1707,6 +1715,8 @@ void InitArchipelagoData(bool isDebug) {
                                         ARRAY_COUNT(gSaveContext.ship.quest.data.archipelago.locations[i].hintName));
         SohUtils::CopyStringToCharArray(gSaveContext.ship.quest.data.archipelago.locations[i].playerName, "",
                                         ARRAY_COUNT(gSaveContext.ship.quest.data.archipelago.locations[i].playerName));
+        SohUtils::CopyStringToCharArray(gSaveContext.ship.quest.data.archipelago.locations[i].gameName, "",
+                                        ARRAY_COUNT(gSaveContext.ship.quest.data.archipelago.locations[i].gameName));
     }
 }
 
