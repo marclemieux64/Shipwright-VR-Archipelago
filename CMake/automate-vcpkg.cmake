@@ -75,9 +75,9 @@ if (WIN32)
     check_type_size("void*" SIZEOF_VOID_P BUILTIN_TYPES_ONLY)
     
     if (SIZEOF_VOID_P EQUAL 8)
-        message(STATUS "Using Vcpkg triplet 'x64-windows'")
+        message(STATUS "Using Vcpkg triplet 'x64-mingw-static'")
         
-        set(VCPKG_TRIPLET x64-windows)
+        set(VCPKG_TRIPLET x64-mingw-static)
     endif()
 endif()
 
@@ -139,10 +139,12 @@ macro(_install_or_update_vcpkg)
         set(VCPKG_BOOTSTRAP ${VCPKG_ROOT}/bootstrap-vcpkg.sh)
     endif()
 
-    if(NOT EXISTS ${VCPKG_EXEC})
-        message("Bootstrapping vcpkg in ${VCPKG_ROOT}")
-        execute_process(COMMAND ${VCPKG_BOOTSTRAP} WORKING_DIRECTORY ${VCPKG_ROOT})
-    endif()
+if(NOT EXISTS ${VCPKG_EXEC})
+  message("Injection du vcpkg pre-compile par Homebrew")
+  file(MAKE_DIRECTORY ${VCPKG_ROOT})
+  execute_process(COMMAND cp /home/linuxbrew/.linuxbrew/bin/vcpkg ${VCPKG_EXEC})
+  execute_process(COMMAND chmod +x ${VCPKG_EXEC})
+endif()
 
     if(NOT EXISTS ${VCPKG_EXEC})
         message(FATAL_ERROR "***** FATAL ERROR: Could not bootstrap vcpkg *****")

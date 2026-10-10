@@ -1,0 +1,21 @@
+{
+  "dependencies": [
+    "bzip2",
+    "glew",
+    "glfw3",
+    "glm",
+    "libogg",
+    "libopus",
+    "libpng",
+    "libvorbis",
+    "libzip",
+    "nlohmann-json",
+    "openvr",
+    "opusfile",
+    "sdl2",
+    "sdl2-net",
+    "spdlog",
+    "tinyxml2",
+    "zlib"
+  ]
+}

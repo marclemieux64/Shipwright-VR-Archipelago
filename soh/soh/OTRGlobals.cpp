@@ -17,7 +17,7 @@
 
 #include "Enhancements/gameconsole.h"
 #ifdef _WIN32
-#include <Windows.h>
+#include <windows.h>
 #else
 #include <time.h>
 #endif
