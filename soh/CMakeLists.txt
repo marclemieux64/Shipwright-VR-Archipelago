@@ -98,6 +98,10 @@ if (NOT TARGET ZAPDLib)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../ZAPDTR/ZAPD ${CMAKE_BINARY_DIR}/ZAPD)
 endif()
 
+if (NOT TARGET OTRExporter)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../OTRExporter ${CMAKE_BINARY_DIR}/OTRExporter)
+endif()
+
 set(PROJECT_NAME soh)
 
 ################################################################################
