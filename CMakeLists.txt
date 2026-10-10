@@ -83,8 +83,8 @@ add_compile_options($<$<CXX_COMPILER_ID:MSVC>:/Zc:preprocessor>)
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
 include(CMake/automate-vcpkg.cmake)
 
-set(VCPKG_TRIPLET x64-mingw-static)
-set(VCPKG_TARGET_TRIPLET x64-mingw-static)
+set(VCPKG_TRIPLET x64-windows-static)
+set(VCPKG_TARGET_TRIPLET x64-windows-static)
 
 vcpkg_bootstrap()
 vcpkg_install_packages(zlib bzip2 libzip libpng sdl2 sdl2-net glew glfw3 nlohmann-json tinyxml2 spdlog glm opus libogg opusfile)
