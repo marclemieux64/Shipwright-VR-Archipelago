@@ -62,13 +62,21 @@ jobs:
           make
           sudo make install
 
-      # OpenVR is Windows-only (win64 .lib/.dll), but libultraship links it unconditionally.
-      # soh.o2r generation only needs ZAPD, so strip those lines on this Linux job.
-      - name: Patch libultraship for Linux (remove OpenVR)
+      # libultraship-vr includes <openvr.h> and links openvr_api unconditionally, but the
+      # submodule doesn't ship the SDK. Fetch it and point the (win64) link line at the Linux .so.
+      - name: Fetch OpenVR SDK for Linux
         run: |
-          sed -i '/openvr_api\.lib/d' libultraship/src/CMakeLists.txt
-          sed -i '/^add_custom_command(TARGET libultraship POST_BUILD/,$d' libultraship/src/CMakeLists.txt
-          tail -n 12 libultraship/src/CMakeLists.txt
+          wget -q https://github.com/ValveSoftware/openvr/archive/refs/tags/v2.5.1.tar.gz -O openvr.tar.gz
+          mkdir -p openvr-tmp
+          tar -xzf openvr.tar.gz -C openvr-tmp
+          SDK=openvr-tmp/openvr-2.5.1
+          DST=libultraship/external/openvr
+          mkdir -p $DST/headers $DST/lib/linux64
+          cp -r $SDK/headers/* $DST/headers/
+          cp "$(find $SDK -path '*linux64*' -name libopenvr_api.so | head -n 1)" $DST/lib/linux64/
+          sed -i 's#lib/win64/openvr_api\.lib#lib/linux64/libopenvr_api.so#' libultraship/src/CMakeLists.txt
+          grep -n openvr libultraship/src/CMakeLists.txt
+          ls -R $DST | head -n 30
       - name: Generate soh.o2r
         run: |
           export PATH="/usr/lib/ccache:/usr/local/opt/ccache/libexec:$PATH"
