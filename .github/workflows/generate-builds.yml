@@ -61,9 +61,11 @@ jobs:
         run: |
           set $env:PATH="$env:USERPROFILE/.cargo/bin;$env:PATH"
           cmake -S . -B build-windows -G Ninja -DCMAKE_MAKE_PROGRAM=ninja -DCMAKE_BUILD_TYPE:STRING=Release -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DBUILD_REMOTE_CONTROL=1
+          if ($LASTEXITCODE -ne 0) { exit 1 }
 
           # Generate soh.o2r on this runner, then place it where the install step expects it
           cmake --build build-windows --config Release --target GenerateSohOtr
+          if ($LASTEXITCODE -ne 0) { exit 1 }
           New-Item -ItemType Directory -Force -Path build-windows/soh | Out-Null
           if (Test-Path soh.o2r) {
             Copy-Item soh.o2r build-windows/soh/soh.o2r -Force
@@ -73,6 +75,7 @@ jobs:
           }
 
           cmake --build build-windows --config Release --parallel 10
+          if ($LASTEXITCODE -ne 0) { exit 1 }
 
           (cd build-windows && cpack)
           cd ..
