@@ -10,6 +10,7 @@
     "libvorbis",
     "libzip",
     "nlohmann-json",
+    "openxr-loader",
     "opusfile",
     "sdl2",
     "sdl2-net",
