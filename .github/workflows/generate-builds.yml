@@ -62,6 +62,13 @@ jobs:
           make
           sudo make install
 
+      # OpenVR is Windows-only (win64 .lib/.dll), but libultraship links it unconditionally.
+      # soh.o2r generation only needs ZAPD, so strip those lines on this Linux job.
+      - name: Patch libultraship for Linux (remove OpenVR)
+        run: |
+          sed -i '/openvr_api\.lib/d' libultraship/src/CMakeLists.txt
+          sed -i '/^add_custom_command(TARGET libultraship POST_BUILD/,$d' libultraship/src/CMakeLists.txt
+          tail -n 12 libultraship/src/CMakeLists.txt
       - name: Generate soh.o2r
         run: |
           export PATH="/usr/lib/ccache:/usr/local/opt/ccache/libexec:$PATH"
@@ -298,6 +305,19 @@ jobs:
         uses: actions/checkout@v6
         with:
           submodules: true
+      # The libultraship-vr submodule only ships openvr_api.dll; the headers and
+      # openvr_api.lib are missing, so fetch them from Valve's OpenVR SDK.
+      - name: Fetch OpenVR SDK
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/ValveSoftware/openvr/archive/refs/tags/v2.5.1.zip" -OutFile openvr.zip
+          Expand-Archive -Path openvr.zip -DestinationPath openvr-tmp
+          $dst = "libultraship/external/openvr"
+          New-Item -ItemType Directory -Force -Path "$dst/headers","$dst/lib/win64","$dst/bin/win64" | Out-Null
+          Copy-Item "openvr-tmp/openvr-2.5.1/headers/*" "$dst/headers" -Recurse -Force
+          Copy-Item "openvr-tmp/openvr-2.5.1/lib/win64/openvr_api.lib" "$dst/lib/win64" -Force
+          Copy-Item "openvr-tmp/openvr-2.5.1/bin/win64/openvr_api.dll" "$dst/bin/win64" -Force
+          Get-ChildItem $dst -Recurse -File | Select-Object -First 20 -ExpandProperty FullName
       - name: Configure sccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
