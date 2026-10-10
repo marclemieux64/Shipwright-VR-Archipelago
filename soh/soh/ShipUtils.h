@@ -1,6 +1,7 @@
 #ifndef SHIP_UTILS_H
 #define SHIP_UTILS_H
 
+#include <set>
 #include <libultraship/libultraship.h>
 
 #ifdef __cplusplus
