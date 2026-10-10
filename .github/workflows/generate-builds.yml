@@ -62,6 +62,18 @@ jobs:
         cmake ..
         make
         sudo make install
+    # libglm-dev on Ubuntu 22.04 doesn't ship glmConfig.cmake, so build from source
+    - name: Install GLM
+      run: |
+        if [ ! -d "deps/glm-1.0.1" ]; then
+          wget https://github.com/g-truc/glm/archive/refs/tags/1.0.1.tar.gz
+          tar -xzf 1.0.1.tar.gz -C deps
+        fi
+        cd deps/glm-1.0.1
+        mkdir -p build
+        cd build
+        cmake .. -DGLM_BUILD_TESTS=OFF -DBUILD_SHARED_LIBS=OFF
+        sudo cmake --install .
     - name: Generate soh.o2r
       run: |
         export PATH="/usr/lib/ccache:/usr/local/opt/ccache/libexec:$PATH"
