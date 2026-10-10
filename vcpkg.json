@@ -10,7 +10,6 @@
     "libvorbis",
     "libzip",
     "nlohmann-json",
-    "openvr",
     "opusfile",
     "sdl2",
     "sdl2-net",
