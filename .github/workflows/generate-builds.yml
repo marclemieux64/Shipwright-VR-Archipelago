@@ -66,6 +66,14 @@ jobs:
           (cd build-windows && cpack)
           cd ..
           mv _packages/*.zip _packages/soh-windows.zip
+      - name: Diagnose missing soh.o2r
+        if: failure()
+        shell: pwsh
+        run: |
+          Write-Host "--- .o2r / .otr files found ---"
+          Get-ChildItem -Recurse -Include *.o2r,*.otr -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
+          Write-Host "--- ZAPD binaries ---"
+          Get-ChildItem -Recurse -Include ZAPD*.exe,ZAPD*.out -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
       - name: Unzip package
         run: Expand-Archive -Path _packages/soh-windows.zip -DestinationPath soh-windows
       - name: Upload build
