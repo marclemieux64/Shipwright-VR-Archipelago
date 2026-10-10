@@ -189,52 +189,54 @@ void func_80A531E4(EnHeishi2* this, PlayState* play) {
 void func_80A53278(EnHeishi2* this, PlayState* play) {
     this->unk_30B = 0;
     this->unk_30E = 0;
-    if (Text_GetFaceReaction(play, 5) != 0) {
-        this->actor.textId = Text_GetFaceReaction(play, 5);
-        this->unk_30B = 1;
-        this->unk_300 = TEXT_STATE_DONE;
-        this->actionFunc = func_80A5475C;
-    } else if ((Flags_GetEventChkInf(EVENTCHKINF_USED_DEKU_TREE_BLUE_WARP)) &&
-               (Flags_GetEventChkInf(EVENTCHKINF_USED_DODONGOS_CAVERN_BLUE_WARP)) &&
-               (Flags_GetEventChkInf(EVENTCHKINF_USED_JABU_JABUS_BELLY_BLUE_WARP))) {
-        // "Get all spiritual stones!"
-        osSyncPrintf(VT_FGCOL(GREEN) " ☆☆☆☆☆ 全部の精霊石GET！ ☆☆☆☆☆ \n" VT_RST);
-        this->unk_300 = TEXT_STATE_DONE;
-        this->actor.textId = 0x7006;
-        this->actionFunc = func_80A5475C;
-    } else if (!IS_DAY) {
-        // "Sleep early for children!"
-        osSyncPrintf(VT_FGCOL(YELLOW) " ☆☆☆☆☆ 子供ははやくネロ！ ☆☆☆☆☆ \n" VT_RST);
-        this->unk_300 = TEXT_STATE_DONE;
-        this->actor.textId = 0x7002;
-        this->actionFunc = func_80A5475C;
+    if (GameInteractor_Should(VB_CAN_BRIBE_HEISHI2, true, this)) {
+        if (Text_GetFaceReaction(play, 5) != 0) {
+            this->actor.textId = Text_GetFaceReaction(play, 5);
+            this->unk_30B = 1;
+            this->unk_300 = TEXT_STATE_DONE;
+            this->actionFunc = func_80A5475C;
+        } else if ((Flags_GetEventChkInf(EVENTCHKINF_USED_DEKU_TREE_BLUE_WARP)) &&
+                   (Flags_GetEventChkInf(EVENTCHKINF_USED_DODONGOS_CAVERN_BLUE_WARP)) &&
+                   (Flags_GetEventChkInf(EVENTCHKINF_USED_JABU_JABUS_BELLY_BLUE_WARP))) {
+            // "Get all spiritual stones!"
+            osSyncPrintf(VT_FGCOL(GREEN) " ☆☆☆☆☆ 全部の精霊石GET！ ☆☆☆☆☆ \n" VT_RST);
+            this->unk_300 = TEXT_STATE_DONE;
+            this->actor.textId = 0x7006;
+            this->actionFunc = func_80A5475C;
+        } else if (!IS_DAY) {
+            // "Sleep early for children!"
+            osSyncPrintf(VT_FGCOL(YELLOW) " ☆☆☆☆☆ 子供ははやくネロ！ ☆☆☆☆☆ \n" VT_RST);
+            this->unk_300 = TEXT_STATE_DONE;
+            this->actor.textId = 0x7002;
+            this->actionFunc = func_80A5475C;
 
-    } else if (this->unk_30C != 0) {
-        // "Anything passes"
-        osSyncPrintf(VT_FGCOL(BLUE) " ☆☆☆☆☆ なんでも通るよ ☆☆☆☆☆ \n" VT_RST);
-        this->unk_300 = TEXT_STATE_DONE;
-        this->actor.textId = 0x7099;
-        this->actionFunc = func_80A5475C;
-    } else if (Flags_GetEventChkInf(EVENTCHKINF_OBTAINED_POCKET_EGG)) {
-        if (this->unk_30E == 0) {
-            // "Start under the first sleeve!"
-            osSyncPrintf(VT_FGCOL(PURPLE) " ☆☆☆☆☆ １回目袖の下開始！ ☆☆☆☆☆ \n" VT_RST);
-            this->actor.textId = 0x7071;
-            this->unk_30E = 1;
+        } else if (this->unk_30C != 0) {
+            // "Anything passes"
+            osSyncPrintf(VT_FGCOL(BLUE) " ☆☆☆☆☆ なんでも通るよ ☆☆☆☆☆ \n" VT_RST);
+            this->unk_300 = TEXT_STATE_DONE;
+            this->actor.textId = 0x7099;
+            this->actionFunc = func_80A5475C;
+        } else if (Flags_GetEventChkInf(EVENTCHKINF_OBTAINED_POCKET_EGG)) {
+            if (this->unk_30E == 0) {
+                // "Start under the first sleeve!"
+                osSyncPrintf(VT_FGCOL(PURPLE) " ☆☆☆☆☆ １回目袖の下開始！ ☆☆☆☆☆ \n" VT_RST);
+                this->actor.textId = 0x7071;
+                this->unk_30E = 1;
+            } else {
+                // "Start under the second sleeve!"
+                osSyncPrintf(VT_FGCOL(PURPLE) " ☆☆☆☆☆ ２回目袖の下開始！ ☆☆☆☆☆ \n" VT_RST);
+                this->actor.textId = 0x7072;
+            }
+            this->unk_300 = TEXT_STATE_CHOICE;
+            this->actionFunc = func_80A5475C;
+
         } else {
-            // "Start under the second sleeve!"
-            osSyncPrintf(VT_FGCOL(PURPLE) " ☆☆☆☆☆ ２回目袖の下開始！ ☆☆☆☆☆ \n" VT_RST);
-            this->actor.textId = 0x7072;
+            // "That's okay"
+            osSyncPrintf(VT_FGCOL(CYAN) " ☆☆☆☆☆ それはとおらんよぉ ☆☆☆☆☆ \n" VT_RST);
+            this->unk_300 = TEXT_STATE_DONE;
+            this->actor.textId = 0x7029;
+            this->actionFunc = func_80A5475C;
         }
-        this->unk_300 = TEXT_STATE_CHOICE;
-        this->actionFunc = func_80A5475C;
-
-    } else {
-        // "That's okay"
-        osSyncPrintf(VT_FGCOL(CYAN) " ☆☆☆☆☆ それはとおらんよぉ ☆☆☆☆☆ \n" VT_RST);
-        this->unk_300 = TEXT_STATE_DONE;
-        this->actor.textId = 0x7029;
-        this->actionFunc = func_80A5475C;
     }
 }
 
@@ -314,19 +316,21 @@ void func_80A5372C(EnHeishi2* this, PlayState* play) {
     f32 frameCount = Animation_GetLastFrame(&gEnHeishiIdleAnim);
 
     Animation_Change(&this->skelAnime, &gEnHeishiIdleAnim, 1.0f, 0.0f, (s16)frameCount, ANIMMODE_LOOP, -10.0f);
-    this->unk_2F2[0] = 200;
-    this->cameraId = Play_CreateSubCamera(play);
-    Play_ChangeCameraStatus(play, MAIN_CAM, CAM_STAT_WAIT);
-    Play_ChangeCameraStatus(play, this->cameraId, CAM_STAT_ACTIVE);
-    this->unk_280.x = 947.0f;
-    this->unk_280.y = 1195.0f;
-    this->unk_280.z = 2682.0f;
+    if (GameInteractor_Should(VB_PLAY_GATE_OPENING_OR_CLOSING_CS, true, this, false)) {
+        this->unk_2F2[0] = 200;
+        this->cameraId = Play_CreateSubCamera(play);
+        Play_ChangeCameraStatus(play, MAIN_CAM, CAM_STAT_WAIT);
+        Play_ChangeCameraStatus(play, this->cameraId, CAM_STAT_ACTIVE);
+        this->unk_280.x = 947.0f;
+        this->unk_280.y = 1195.0f;
+        this->unk_280.z = 2682.0f;
 
-    this->unk_28C.x = 1164.0f;
-    this->unk_28C.y = 1145.0f;
-    this->unk_28C.z = 3014.0f;
+        this->unk_28C.x = 1164.0f;
+        this->unk_28C.y = 1145.0f;
+        this->unk_28C.z = 3014.0f;
 
-    Play_CameraSetAtEye(play, this->cameraId, &this->unk_280, &this->unk_28C);
+        Play_CameraSetAtEye(play, this->cameraId, &this->unk_280, &this->unk_28C);
+    }
     this->actionFunc = func_80A53850;
 }
 
@@ -334,11 +338,15 @@ void func_80A53850(EnHeishi2* this, PlayState* play) {
     BgSpot15Saku* gate;
 
     SkelAnime_Update(&this->skelAnime);
-    Play_CameraSetAtEye(play, this->cameraId, &this->unk_280, &this->unk_28C);
+    if (GameInteractor_Should(VB_PLAY_GATE_OPENING_OR_CLOSING_CS, true, this, false)) {
+        Play_CameraSetAtEye(play, this->cameraId, &this->unk_280, &this->unk_28C);
+    }
     gate = (BgSpot15Saku*)this->gate;
     if ((this->unk_2F2[0] == 0) || (gate->unk_168 == 0)) {
-        Play_ClearCamera(play, this->cameraId);
-        Play_ChangeCameraStatus(play, MAIN_CAM, CAM_STAT_ACTIVE);
+        if (GameInteractor_Should(VB_PLAY_GATE_OPENING_OR_CLOSING_CS, true, this, true)) {
+            Play_ClearCamera(play, this->cameraId);
+            Play_ChangeCameraStatus(play, MAIN_CAM, CAM_STAT_ACTIVE);
+        }
         Message_CloseTextbox(play);
         this->unk_30C = 1;
         Player_SetCsActionWithHaltedActors(play, NULL, 7);
@@ -479,23 +487,25 @@ void func_80A53DF8(EnHeishi2* this, PlayState* play) {
     f32 frameCount = Animation_GetLastFrame(&gEnHeishiIdleAnim);
 
     Animation_Change(&this->skelAnime, &gEnHeishiIdleAnim, 1.0f, 0.0f, (s16)frameCount, ANIMMODE_LOOP, -10.0f);
-    this->unk_2F2[0] = 200;
-    this->cameraId = Play_CreateSubCamera(play);
-    Play_ChangeCameraStatus(play, MAIN_CAM, CAM_STAT_WAIT);
-    Play_ChangeCameraStatus(play, this->cameraId, CAM_STAT_ACTIVE);
-    this->unk_2BC.x = -71.0f;
-    this->unk_280.x = -71.0f;
-    this->unk_2BC.y = 571.0f;
-    this->unk_280.y = 571.0f;
-    this->unk_2BC.z = -1487.0f;
-    this->unk_280.z = -1487.0f;
-    this->unk_298.x = 181.0f;
-    this->unk_28C.x = 181.0f;
-    this->unk_298.y = 417.0f;
-    this->unk_28C.y = 417.0f;
-    this->unk_298.z = -1079.0f;
-    this->unk_28C.z = -1079.0f;
-    Play_CameraSetAtEye(play, this->cameraId, &this->unk_280, &this->unk_28C);
+    if (GameInteractor_Should(VB_PLAY_GATE_OPENING_OR_CLOSING_CS, true, this, false)) {
+        this->unk_2F2[0] = 200;
+        this->cameraId = Play_CreateSubCamera(play);
+        Play_ChangeCameraStatus(play, MAIN_CAM, CAM_STAT_WAIT);
+        Play_ChangeCameraStatus(play, this->cameraId, CAM_STAT_ACTIVE);
+        this->unk_2BC.x = -71.0f;
+        this->unk_280.x = -71.0f;
+        this->unk_2BC.y = 571.0f;
+        this->unk_280.y = 571.0f;
+        this->unk_2BC.z = -1487.0f;
+        this->unk_280.z = -1487.0f;
+        this->unk_298.x = 181.0f;
+        this->unk_28C.x = 181.0f;
+        this->unk_298.y = 417.0f;
+        this->unk_28C.y = 417.0f;
+        this->unk_298.z = -1079.0f;
+        this->unk_28C.z = -1079.0f;
+        Play_CameraSetAtEye(play, this->cameraId, &this->unk_280, &this->unk_28C);
+    }
     this->actionFunc = func_80A53F30;
 }
 
@@ -503,11 +513,15 @@ void func_80A53F30(EnHeishi2* this, PlayState* play) {
     BgGateShutter* gate;
 
     SkelAnime_Update(&this->skelAnime);
-    Play_CameraSetAtEye(play, this->cameraId, &this->unk_280, &this->unk_28C);
+    if (GameInteractor_Should(VB_PLAY_GATE_OPENING_OR_CLOSING_CS, true, this, false)) {
+        Play_CameraSetAtEye(play, this->cameraId, &this->unk_280, &this->unk_28C);
+    }
     gate = (BgGateShutter*)this->gate;
     if ((this->unk_2F2[0] == 0) || (gate->openingState == 0)) {
-        Play_ClearCamera(play, this->cameraId);
-        Play_ChangeCameraStatus(play, MAIN_CAM, CAM_STAT_ACTIVE);
+        if (GameInteractor_Should(VB_PLAY_GATE_OPENING_OR_CLOSING_CS, true, this, true)) {
+            Play_ClearCamera(play, this->cameraId);
+            Play_ChangeCameraStatus(play, MAIN_CAM, CAM_STAT_ACTIVE);
+        }
         if ((this->unk_30A != 2)) {
             if (this->unk_30A == 0) {
                 this->actor.textId = 0x2015;
@@ -665,7 +679,7 @@ void func_80A5455C(EnHeishi2* this, PlayState* play) {
         pos.y = Rand_CenteredFloat(20.0f) + (this->unk_274.y - 40.0f);
         pos.z = Rand_CenteredFloat(20.0f) + (this->unk_274.z - 20.0f);
         rotY = Rand_CenteredFloat(7000.0f) + this->actor.yawTowardsPlayer;
-        bomb = (EnBom*)Actor_Spawn(&play->actorCtx, play, ACTOR_EN_BOM, pos.x, pos.y, pos.z, 0, rotY, 0, 0, true);
+        bomb = (EnBom*)Actor_Spawn(&play->actorCtx, play, ACTOR_EN_BOM, pos.x, pos.y, pos.z, 0, rotY, 0, 0);
         if (bomb != NULL) {
             bomb->actor.speedXZ = Rand_CenteredFloat(5.0f) + 10.0f;
             bomb->actor.velocity.y = Rand_CenteredFloat(5.0f) + 10.0f;

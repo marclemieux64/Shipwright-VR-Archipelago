@@ -544,6 +544,8 @@ typedef enum {
     LANGUAGE_MAX
 } Language;
 
+#define TODO_TRANSLATE "TranslateThis" 
+
 // TODO get these properties from the textures themselves
 #define FONT_CHAR_TEX_WIDTH  16
 #define FONT_CHAR_TEX_HEIGHT 16
@@ -1337,9 +1339,9 @@ typedef struct {
     /*      */ char* frenchAge;
 } BetterSceneSelectAgeLabels;
 
-// NTSC TODO: japanese bettersceneselect
+
 typedef struct {
-//   /*      */ char* japaneseName;
+  /*      */ char* japaneseName;
   /*      */ char* englishName;
   /*      */ char* germanName;
   /*      */ char* frenchName;
@@ -1348,7 +1350,7 @@ typedef struct {
 } BetterSceneSelectEntrancePair;
 
 typedef struct {
-    // /*      */ char* japaneseName;
+    /*      */ char* japaneseName;
     /*      */ char* englishName;
     /*      */ char* germanName;
     /*      */ char* frenchName;
@@ -1520,7 +1522,7 @@ typedef struct {
     /* 0x34 */ s32 isEnabled;
 } StickDirectionPrompt;
 
-typedef struct {
+typedef struct FileChooseContext {
     /* 0x00000 */ GameState state;
     /* 0x000A4 */ Vtx* windowVtx;
     /* 0x000A8 */ u8* staticSegment;
@@ -1591,7 +1593,7 @@ typedef struct {
     /* 0x1CAD4 */ s16 newFileNameCharCount;
     /* 0x1CAD6 */ s16 unk_1CAD6[5];
     s16 logoAlpha;
-    s8 questType[3]; // 0 for Normal, 1 for MQ
+    s8 questType[4]; // 0 for Normal, 1 for MQ
     StickDirectionPrompt stickLeftPrompt;
     StickDirectionPrompt stickRightPrompt;
     f32 arrowAnimTween;
@@ -1605,6 +1607,10 @@ typedef struct {
     uint8_t randomizerIndex;
     int16_t randomizerUIAlpha;
     uint16_t randomizerArrowOffset;
+    uint8_t archipelagoIndex;
+    int16_t archipelagoUIAlpha;
+    uint16_t archipelagoArrowOffset;
+
 } FileChooseContext; // size = 0x1CAE0
 
 // Macros for `EntranceInfo.field`

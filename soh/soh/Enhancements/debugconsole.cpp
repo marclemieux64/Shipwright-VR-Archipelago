@@ -1,5 +1,5 @@
 #include "debugconsole.h"
-#include <Utils.h>
+#include <ship/utils/Utils.h>
 #include "savestates.h"
 #include "soh/ActorDB.h"
 
@@ -11,13 +11,14 @@
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/Enhancements/cosmetics/CosmeticsEditor.h"
 #include "soh/Enhancements/audio/AudioEditor.h"
+#include "soh/Enhancements/randomizer/logic.h"
 
 #define Path _Path
 #define PATH_HACK
-#include <utils/StringHelper.h>
+#include <ship/utils/StringHelper.h>
 
-#include <Window.h>
-#include <Context.h>
+#include <ship/window/Window.h>
+#include <ship/Context.h>
 #include <imgui.h>
 #include <imgui_internal.h>
 #undef PATH_HACK
@@ -100,7 +101,7 @@ static bool ActorSpawnHandler(std::shared_ptr<Ship::Console> Console, const std:
     }
 
     if (Actor_Spawn(&gPlayState->actorCtx, gPlayState, actorId, spawnPoint.pos.x, spawnPoint.pos.y, spawnPoint.pos.z,
-                    spawnPoint.rot.x, spawnPoint.rot.y, spawnPoint.rot.z, params, 0) == NULL) {
+                    spawnPoint.rot.x, spawnPoint.rot.y, spawnPoint.rot.z, params) == NULL) {
         ERROR_MESSAGE("Failed to spawn actor. Actor_Spawn returned NULL");
         return 1;
     }
@@ -109,8 +110,8 @@ static bool ActorSpawnHandler(std::shared_ptr<Ship::Console> Console, const std:
 
 static bool KillPlayerHandler(std::shared_ptr<Ship::Console> Console, const std::vector<std::string>&,
                               std::string* output) {
-    GameInteractionEffectBase* effect = new GameInteractionEffect::SetPlayerHealth();
-    dynamic_cast<ParameterizedGameInteractionEffect*>(effect)->parameters[0] = 0;
+    GameInteractionEffect::SetPlayerHealth effect;
+    effect.parameters[0] = 0;
     GameInteractionEffectQueryResult result = GameInteractor::ApplyEffect(effect);
     if (result == GameInteractionEffectQueryResult::Possible) {
         INFO_MESSAGE("[SOH] You've met with a terrible fate, haven't you?");
@@ -141,8 +142,8 @@ static bool SetPlayerHealthHandler(std::shared_ptr<Ship::Console> Console, const
         return 1;
     }
 
-    GameInteractionEffectBase* effect = new GameInteractionEffect::SetPlayerHealth();
-    dynamic_cast<ParameterizedGameInteractionEffect*>(effect)->parameters[0] = health;
+    GameInteractionEffect::SetPlayerHealth effect;
+    effect.parameters[0] = health;
     GameInteractionEffectQueryResult result = GameInteractor::ApplyEffect(effect);
     if (result == GameInteractionEffectQueryResult::Possible) {
         INFO_MESSAGE("[SOH] Player health updated to %d", health);
@@ -158,7 +159,6 @@ static bool LoadSceneHandler(std::shared_ptr<Ship::Console> Console, const std::
     gSaveContext.respawnFlag = 0;
     gSaveContext.seqId = 0xFF;
     gSaveContext.gameMode = GAMEMODE_NORMAL;
-
     return 0;
 }
 
@@ -256,9 +256,9 @@ static bool AddAmmoHandler(std::shared_ptr<Ship::Console> Console, const std::ve
         return 1;
     }
 
-    GameInteractionEffectBase* effect = new GameInteractionEffect::AddOrTakeAmmo();
-    dynamic_cast<ParameterizedGameInteractionEffect*>(effect)->parameters[0] = amount;
-    dynamic_cast<ParameterizedGameInteractionEffect*>(effect)->parameters[1] = it->second;
+    GameInteractionEffect::AddOrTakeAmmo effect;
+    effect.parameters[0] = amount;
+    effect.parameters[1] = it->second;
     GameInteractionEffectQueryResult result = GameInteractor::ApplyEffect(effect);
 
     if (result == GameInteractionEffectQueryResult::Possible) {
@@ -297,9 +297,9 @@ static bool TakeAmmoHandler(std::shared_ptr<Ship::Console> Console, const std::v
         return 1;
     }
 
-    GameInteractionEffectBase* effect = new GameInteractionEffect::AddOrTakeAmmo();
-    dynamic_cast<ParameterizedGameInteractionEffect*>(effect)->parameters[0] = -amount;
-    dynamic_cast<ParameterizedGameInteractionEffect*>(effect)->parameters[1] = it->second;
+    GameInteractionEffect::AddOrTakeAmmo effect;
+    effect.parameters[0] = -amount;
+    effect.parameters[1] = it->second;
     GameInteractionEffectQueryResult result = GameInteractor::ApplyEffect(effect);
 
     if (result == GameInteractionEffectQueryResult::Possible) {
@@ -353,7 +353,6 @@ static bool BottleHandler(std::shared_ptr<Ship::Console> Console, const std::vec
         return 1;
     }
 
-    // I dont think you can do OOB with just this
     gSaveContext.inventory.items[0x11 + slot] = it->second;
 
     return 0;
@@ -393,7 +392,7 @@ static bool GiveItemHandler(std::shared_ptr<Ship::Console> Console, const std::v
     if (args[1].compare("vanilla") == 0) {
         getItemEntry = ItemTableManager::Instance->RetrieveItemEntry(MOD_NONE, std::stoi(args[2]));
     } else if (args[1].compare("randomizer") == 0) {
-        getItemEntry = ItemTableManager::Instance->RetrieveItemEntry(MOD_RANDOMIZER, std::stoi(args[2]));
+        getItemEntry = Rando::StaticData::RetrieveItem((RandomizerGet)std::stoi(args[2])).GetGIEntry_Copy();
     } else {
         ERROR_MESSAGE("[SOH] Invalid argument passed, must be 'vanilla' or 'randomizer'");
         return 1;
@@ -611,7 +610,7 @@ static bool InvisibleHandler(std::shared_ptr<Ship::Console> Console, const std::
         return 1;
     }
 
-    RemovableGameInteractionEffect* effect = new GameInteractionEffect::InvisibleLink();
+    GameInteractionEffect::InvisibleLink effect;
     GameInteractionEffectQueryResult result =
         state ? GameInteractor::ApplyEffect(effect) : GameInteractor::RemoveEffect(effect);
     if (result == GameInteractionEffectQueryResult::Possible) {
@@ -638,8 +637,8 @@ static bool GiantLinkHandler(std::shared_ptr<Ship::Console> Console, const std::
         return 1;
     }
 
-    RemovableGameInteractionEffect* effect = new GameInteractionEffect::ModifyLinkSize();
-    dynamic_cast<ParameterizedGameInteractionEffect*>(effect)->parameters[0] = GI_LINK_SIZE_GIANT;
+    GameInteractionEffect::ModifyLinkSize effect;
+    effect.parameters[0] = GI_LINK_SIZE_GIANT;
     GameInteractionEffectQueryResult result =
         state ? GameInteractor::ApplyEffect(effect) : GameInteractor::RemoveEffect(effect);
     if (result == GameInteractionEffectQueryResult::Possible) {
@@ -666,8 +665,8 @@ static bool MinishLinkHandler(std::shared_ptr<Ship::Console> Console, const std:
         return 1;
     }
 
-    RemovableGameInteractionEffect* effect = new GameInteractionEffect::ModifyLinkSize();
-    dynamic_cast<ParameterizedGameInteractionEffect*>(effect)->parameters[0] = GI_LINK_SIZE_MINISH;
+    GameInteractionEffect::ModifyLinkSize effect;
+    effect.parameters[0] = GI_LINK_SIZE_MINISH;
     GameInteractionEffectQueryResult result =
         state ? GameInteractor::ApplyEffect(effect) : GameInteractor::RemoveEffect(effect);
     if (result == GameInteractionEffectQueryResult::Possible) {
@@ -699,8 +698,8 @@ static bool AddHeartContainerHandler(std::shared_ptr<Ship::Console> Console, con
         return 1;
     }
 
-    GameInteractionEffectBase* effect = new GameInteractionEffect::ModifyHeartContainers();
-    dynamic_cast<ParameterizedGameInteractionEffect*>(effect)->parameters[0] = hearts;
+    GameInteractionEffect::ModifyHeartContainers effect;
+    effect.parameters[0] = hearts;
     GameInteractionEffectQueryResult result = GameInteractor::ApplyEffect(effect);
     if (result == GameInteractionEffectQueryResult::Possible) {
         INFO_MESSAGE("[SOH] Added %d heart containers", hearts);
@@ -731,8 +730,8 @@ static bool RemoveHeartContainerHandler(std::shared_ptr<Ship::Console> Console, 
         return 1;
     }
 
-    GameInteractionEffectBase* effect = new GameInteractionEffect::ModifyHeartContainers();
-    dynamic_cast<ParameterizedGameInteractionEffect*>(effect)->parameters[0] = -hearts;
+    GameInteractionEffect::ModifyHeartContainers effect;
+    effect.parameters[0] = -hearts;
     GameInteractionEffectQueryResult result = GameInteractor::ApplyEffect(effect);
     if (result == GameInteractionEffectQueryResult::Possible) {
         INFO_MESSAGE("[SOH] Removed %d heart containers", hearts);
@@ -750,10 +749,10 @@ static bool GravityHandler(std::shared_ptr<Ship::Console> Console, const std::ve
         return 1;
     }
 
-    GameInteractionEffectBase* effect = new GameInteractionEffect::ModifyGravity();
+    GameInteractionEffect::ModifyGravity effect;
 
     try {
-        dynamic_cast<ParameterizedGameInteractionEffect*>(effect)->parameters[0] =
+        effect.parameters[0] =
             Ship::Math::clamp(std::stoi(args[1], nullptr, 10), GI_GRAVITY_LEVEL_LIGHT, GI_GRAVITY_LEVEL_HEAVY);
     } catch (std::invalid_argument const& ex) {
         ERROR_MESSAGE("[SOH] Gravity value must be a number.");
@@ -785,7 +784,7 @@ static bool NoUIHandler(std::shared_ptr<Ship::Console> Console, const std::vecto
         return 1;
     }
 
-    RemovableGameInteractionEffect* effect = new GameInteractionEffect::NoUI();
+    GameInteractionEffect::NoUI effect;
     GameInteractionEffectQueryResult result =
         state ? GameInteractor::ApplyEffect(effect) : GameInteractor::RemoveEffect(effect);
 
@@ -800,7 +799,7 @@ static bool NoUIHandler(std::shared_ptr<Ship::Console> Console, const std::vecto
 
 static bool FreezeHandler(std::shared_ptr<Ship::Console> Console, const std::vector<std::string>& args,
                           std::string* output) {
-    GameInteractionEffectBase* effect = new GameInteractionEffect::FreezePlayer();
+    GameInteractionEffect::FreezePlayer effect;
     GameInteractionEffectQueryResult result = GameInteractor::ApplyEffect(effect);
 
     if (result == GameInteractionEffectQueryResult::Possible) {
@@ -818,10 +817,10 @@ static bool DefenseModifierHandler(std::shared_ptr<Ship::Console> Console, const
         ERROR_MESSAGE("[SOH] Unexpected arguments passed");
         return 1;
     }
-    GameInteractionEffectBase* effect = new GameInteractionEffect::ModifyDefenseModifier();
+    GameInteractionEffect::ModifyDefenseModifier effect;
 
     try {
-        dynamic_cast<ParameterizedGameInteractionEffect*>(effect)->parameters[0] = std::stoi(args[1], nullptr, 10);
+        effect.parameters[0] = std::stoi(args[1], nullptr, 10);
     } catch (std::invalid_argument const& ex) {
         ERROR_MESSAGE("[SOH] Defense modifier value must be a number.");
         return 1;
@@ -829,8 +828,7 @@ static bool DefenseModifierHandler(std::shared_ptr<Ship::Console> Console, const
 
     GameInteractionEffectQueryResult result = GameInteractor::ApplyEffect(effect);
     if (result == GameInteractionEffectQueryResult::Possible) {
-        INFO_MESSAGE("[SOH] Defense modifier set to %d",
-                     dynamic_cast<ParameterizedGameInteractionEffect*>(effect)->parameters[0]);
+        INFO_MESSAGE("[SOH] Defense modifier set to %d", effect.parameters[0]);
         return 0;
     } else {
         INFO_MESSAGE("[SOH] Command failed: Could not set defense modifier.");
@@ -844,7 +842,7 @@ static bool DamageHandler(std::shared_ptr<Ship::Console> Console, const std::vec
         ERROR_MESSAGE("[SOH] Unexpected arguments passed");
         return 1;
     }
-    GameInteractionEffectBase* effect = new GameInteractionEffect::ModifyHealth();
+    GameInteractionEffect::ModifyHealth effect;
 
     try {
         int value = std::stoi(args[1], nullptr, 10);
@@ -853,7 +851,7 @@ static bool DamageHandler(std::shared_ptr<Ship::Console> Console, const std::vec
             return 1;
         }
 
-        dynamic_cast<ParameterizedGameInteractionEffect*>(effect)->parameters[0] = -value;
+        effect.parameters[0] = -value;
     } catch (std::invalid_argument const& ex) {
         ERROR_MESSAGE("[SOH] Damage value must be a number.");
         return 1;
@@ -875,7 +873,7 @@ static bool HealHandler(std::shared_ptr<Ship::Console> Console, const std::vecto
         ERROR_MESSAGE("[SOH] Unexpected arguments passed");
         return 1;
     }
-    GameInteractionEffectBase* effect = new GameInteractionEffect::ModifyHealth();
+    GameInteractionEffect::ModifyHealth effect;
 
     try {
         int value = std::stoi(args[1], nullptr, 10);
@@ -884,7 +882,7 @@ static bool HealHandler(std::shared_ptr<Ship::Console> Console, const std::vecto
             return 1;
         }
 
-        dynamic_cast<ParameterizedGameInteractionEffect*>(effect)->parameters[0] = value;
+        effect.parameters[0] = value;
     } catch (std::invalid_argument const& ex) {
         ERROR_MESSAGE("[SOH] Damage value must be a number.");
         return 1;
@@ -902,7 +900,7 @@ static bool HealHandler(std::shared_ptr<Ship::Console> Console, const std::vecto
 
 static bool FillMagicHandler(std::shared_ptr<Ship::Console> Console, const std::vector<std::string>& args,
                              std::string* output) {
-    GameInteractionEffectBase* effect = new GameInteractionEffect::FillMagic();
+    GameInteractionEffect::FillMagic effect;
     GameInteractionEffectQueryResult result = GameInteractor::ApplyEffect(effect);
 
     if (result == GameInteractionEffectQueryResult::Possible) {
@@ -916,7 +914,7 @@ static bool FillMagicHandler(std::shared_ptr<Ship::Console> Console, const std::
 
 static bool EmptyMagicHandler(std::shared_ptr<Ship::Console> Console, const std::vector<std::string>& args,
                               std::string* output) {
-    GameInteractionEffectBase* effect = new GameInteractionEffect::EmptyMagic();
+    GameInteractionEffect::EmptyMagic effect;
     GameInteractionEffectQueryResult result = GameInteractor::ApplyEffect(effect);
 
     if (result == GameInteractionEffectQueryResult::Possible) {
@@ -943,7 +941,7 @@ static bool NoZHandler(std::shared_ptr<Ship::Console> Console, const std::vector
         return 1;
     }
 
-    RemovableGameInteractionEffect* effect = new GameInteractionEffect::DisableZTargeting();
+    GameInteractionEffect::DisableZTargeting effect;
     GameInteractionEffectQueryResult result =
         state ? GameInteractor::ApplyEffect(effect) : GameInteractor::RemoveEffect(effect);
 
@@ -971,7 +969,7 @@ static bool OneHitKOHandler(std::shared_ptr<Ship::Console> Console, const std::v
         return 1;
     }
 
-    RemovableGameInteractionEffect* effect = new GameInteractionEffect::OneHitKO();
+    GameInteractionEffect::OneHitKO effect;
     GameInteractionEffectQueryResult result =
         state ? GameInteractor::ApplyEffect(effect) : GameInteractor::RemoveEffect(effect);
 
@@ -999,7 +997,7 @@ static bool PacifistHandler(std::shared_ptr<Ship::Console> Console, const std::v
         return 1;
     }
 
-    RemovableGameInteractionEffect* effect = new GameInteractionEffect::PacifistMode();
+    GameInteractionEffect::PacifistMode effect;
     GameInteractionEffectQueryResult result =
         state ? GameInteractor::ApplyEffect(effect) : GameInteractor::RemoveEffect(effect);
 
@@ -1027,8 +1025,8 @@ static bool PaperLinkHandler(std::shared_ptr<Ship::Console> Console, const std::
         return 1;
     }
 
-    RemovableGameInteractionEffect* effect = new GameInteractionEffect::ModifyLinkSize();
-    dynamic_cast<ParameterizedGameInteractionEffect*>(effect)->parameters[0] = GI_LINK_SIZE_PAPER;
+    GameInteractionEffect::ModifyLinkSize effect;
+    effect.parameters[0] = GI_LINK_SIZE_PAPER;
     GameInteractionEffectQueryResult result =
         state ? GameInteractor::ApplyEffect(effect) : GameInteractor::RemoveEffect(effect);
 
@@ -1056,7 +1054,7 @@ static bool RainstormHandler(std::shared_ptr<Ship::Console> Console, const std::
         return 1;
     }
 
-    RemovableGameInteractionEffect* effect = new GameInteractionEffect::WeatherRainstorm();
+    GameInteractionEffect::WeatherRainstorm effect;
     GameInteractionEffectQueryResult result =
         state ? GameInteractor::ApplyEffect(effect) : GameInteractor::RemoveEffect(effect);
 
@@ -1084,7 +1082,7 @@ static bool ReverseControlsHandler(std::shared_ptr<Ship::Console> Console, const
         return 1;
     }
 
-    RemovableGameInteractionEffect* effect = new GameInteractionEffect::ReverseControls();
+    GameInteractionEffect::ReverseControls effect;
     GameInteractionEffectQueryResult result =
         state ? GameInteractor::ApplyEffect(effect) : GameInteractor::RemoveEffect(effect);
 
@@ -1104,10 +1102,10 @@ static bool UpdateRupeesHandler(std::shared_ptr<Ship::Console> Console, const st
         ERROR_MESSAGE("[SOH] Unexpected arguments passed");
         return 1;
     }
-    GameInteractionEffectBase* effect = new GameInteractionEffect::ModifyRupees();
+    GameInteractionEffect::ModifyRupees effect;
 
     try {
-        dynamic_cast<ParameterizedGameInteractionEffect*>(effect)->parameters[0] = std::stoi(args[1], nullptr, 10);
+        effect.parameters[0] = std::stoi(args[1], nullptr, 10);
     } catch (std::invalid_argument const& ex) {
         ERROR_MESSAGE("[SOH] Rupee value must be a number.");
         return 1;
@@ -1129,10 +1127,10 @@ static bool SpeedModifierHandler(std::shared_ptr<Ship::Console> Console, const s
         ERROR_MESSAGE("[SOH] Unexpected arguments passed");
         return 1;
     }
-    GameInteractionEffectBase* effect = new GameInteractionEffect::ModifyRunSpeedModifier();
+    GameInteractionEffect::ModifyMovementSpeedMultiplier effect;
 
     try {
-        dynamic_cast<ParameterizedGameInteractionEffect*>(effect)->parameters[0] = std::stoi(args[1], nullptr, 10);
+        effect.parameters[0] = std::stoi(args[1], nullptr, 10);
     } catch (std::invalid_argument const& ex) {
         ERROR_MESSAGE("[SOH] Speed modifier value must be a number.");
         return 1;
@@ -1167,8 +1165,8 @@ static bool BootsHandler(std::shared_ptr<Ship::Console> Console, const std::vect
         return 1;
     }
 
-    GameInteractionEffectBase* effect = new GameInteractionEffect::ForceEquipBoots();
-    dynamic_cast<ParameterizedGameInteractionEffect*>(effect)->parameters[0] = it->second;
+    GameInteractionEffect::ForceEquipBoots effect;
+    effect.parameters[0] = it->second;
     GameInteractionEffectQueryResult result = GameInteractor::ApplyEffect(effect);
 
     if (result == GameInteractionEffectQueryResult::Possible) {
@@ -1199,8 +1197,8 @@ static bool GiveShieldHandler(std::shared_ptr<Ship::Console> Console, const std:
         return 1;
     }
 
-    GameInteractionEffectBase* effect = new GameInteractionEffect::GiveOrTakeShield();
-    dynamic_cast<ParameterizedGameInteractionEffect*>(effect)->parameters[0] = it->second;
+    GameInteractionEffect::GiveOrTakeShield effect;
+    effect.parameters[0] = it->second;
     GameInteractionEffectQueryResult result = GameInteractor::ApplyEffect(effect);
 
     if (result == GameInteractionEffectQueryResult::Possible) {
@@ -1225,8 +1223,8 @@ static bool TakeShieldHandler(std::shared_ptr<Ship::Console> Console, const std:
         return 1;
     }
 
-    GameInteractionEffectBase* effect = new GameInteractionEffect::GiveOrTakeShield();
-    dynamic_cast<ParameterizedGameInteractionEffect*>(effect)->parameters[0] = it->second * -1;
+    GameInteractionEffect::GiveOrTakeShield effect;
+    effect.parameters[0] = it->second * -1;
     GameInteractionEffectQueryResult result = GameInteractor::ApplyEffect(effect);
 
     if (result == GameInteractionEffectQueryResult::Possible) {
@@ -1244,7 +1242,7 @@ static bool KnockbackHandler(std::shared_ptr<Ship::Console> Console, const std::
         ERROR_MESSAGE("[SOH] Unexpected arguments passed");
         return 1;
     }
-    GameInteractionEffectBase* effect = new GameInteractionEffect::KnockbackPlayer();
+    GameInteractionEffect::KnockbackPlayer effect;
 
     try {
         int value = std::stoi(args[1], nullptr, 10);
@@ -1253,7 +1251,7 @@ static bool KnockbackHandler(std::shared_ptr<Ship::Console> Console, const std::
             return 1;
         }
 
-        dynamic_cast<ParameterizedGameInteractionEffect*>(effect)->parameters[0] = value;
+        effect.parameters[0] = value;
     } catch (std::invalid_argument const& ex) {
         ERROR_MESSAGE("[SOH] Knockback value must be a number.");
         return 1;
@@ -1271,7 +1269,7 @@ static bool KnockbackHandler(std::shared_ptr<Ship::Console> Console, const std::
 
 static bool ElectrocuteHandler(std::shared_ptr<Ship::Console> Console, const std::vector<std::string>& args,
                                std::string* output) {
-    GameInteractionEffectBase* effect = new GameInteractionEffect::ElectrocutePlayer();
+    GameInteractionEffect::ElectrocutePlayer effect;
     GameInteractionEffectQueryResult result = GameInteractor::ApplyEffect(effect);
 
     if (result == GameInteractionEffectQueryResult::Possible) {
@@ -1285,7 +1283,7 @@ static bool ElectrocuteHandler(std::shared_ptr<Ship::Console> Console, const std
 
 static bool BurnHandler(std::shared_ptr<Ship::Console> Console, const std::vector<std::string>& args,
                         std::string* output) {
-    GameInteractionEffectBase* effect = new GameInteractionEffect::BurnPlayer();
+    GameInteractionEffect::BurnPlayer effect;
     GameInteractionEffectQueryResult result = GameInteractor::ApplyEffect(effect);
 
     if (result == GameInteractionEffectQueryResult::Possible) {
@@ -1447,6 +1445,67 @@ static bool SfxHandler(std::shared_ptr<Ship::Console> Console, const std::vector
         return 1;
     }
 
+    return 0;
+}
+
+static bool AvailableChecksProcessUndiscoveredExitsHandler(std::shared_ptr<Ship::Console> Console,
+                                                           const std::vector<std::string>& args, std::string* output) {
+    const auto& logic = Rando::Context::GetInstance()->GetLogic();
+    bool enabled = false;
+
+    if (args.size() == 1) {
+        enabled = !logic->ACProcessUndiscoveredExits;
+    } else {
+        try {
+            enabled = std::stoi(args[1]);
+        } catch (std::invalid_argument const& ex) {
+            ERROR_MESSAGE("[SOH] Enable should be 0 or 1");
+            return 1;
+        }
+    }
+
+    logic->ACProcessUndiscoveredExits = enabled;
+    INFO_MESSAGE("[SOH] Available Checks - Process Undiscovered Exits %s",
+                 logic->ACProcessUndiscoveredExits ? "enabled" : "disabled");
+
+    CheckTracker::RecalculateAvailableChecks();
+    return 0;
+}
+
+static bool AvailableChecksRecalculateHandler(std::shared_ptr<Ship::Console> Console,
+                                              const std::vector<std::string>& args, std::string* output) {
+    RandomizerRegion startingRegion = RR_ROOT;
+    RandoAgeTime startingAgeTime = RAT_NONE;
+
+    if (args.size() > 1) {
+        try {
+            startingRegion = static_cast<RandomizerRegion>(std::stoi(args[1]));
+        } catch (std::invalid_argument const& ex) {
+            ERROR_MESSAGE("[SOH] Region should be a number");
+            return 1;
+        }
+
+        if (startingRegion <= RR_NONE || startingRegion >= RR_MAX) {
+            ERROR_MESSAGE("[SOH] Region should be between 1 and %d", RR_MAX - 1);
+            return 1;
+        }
+    }
+
+    if (args.size() > 2) {
+        if (args[2] == "ChildDay") {
+            startingAgeTime = RAT_CHILD_DAY;
+        } else if (args[2] == "ChildNight") {
+            startingAgeTime = RAT_CHILD_NIGHT;
+        } else if (args[2] == "AdultDay") {
+            startingAgeTime = RAT_ADULT_DAY;
+        } else if (args[2] == "AdultNight") {
+            startingAgeTime = RAT_ADULT_NIGHT;
+        } else {
+            ERROR_MESSAGE("[SOH] Age Time should be ChildDay, ChildNight, AdultDay, or AdultNight");
+        }
+    }
+
+    CheckTracker::RecalculateAvailableChecks(startingRegion, startingAgeTime);
     return 0;
 }
 
@@ -1707,6 +1766,18 @@ void DebugConsole_Init(void) {
                               { "reset|randomize", Ship::ArgumentType::TEXT },
                               { "group_name", Ship::ArgumentType::TEXT, true },
                           } });
+
+    CMD_REGISTER("acpue", { AvailableChecksProcessUndiscoveredExitsHandler,
+                            "Available Checks - Process Undiscovered Exits",
+                            { { "enable", Ship::ArgumentType::NUMBER, true } } });
+
+    Ship::Context::GetInstance()->GetConsole()->AddCommand(
+        "acr", { AvailableChecksRecalculateHandler,
+                 "Available Checks - Recalculate",
+                 {
+                     { "starting_region", Ship::ArgumentType::NUMBER, true },
+                     { "ChildDay|ChildNight|AdultDay|AdultNight", Ship::ArgumentType::TEXT, true },
+                 } });
 
     Ship::Context::GetInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
 }

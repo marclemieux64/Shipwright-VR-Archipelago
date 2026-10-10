@@ -2,8 +2,9 @@
 #include "soh/util.h"
 #include "soh/SohGui/UIWidgets.hpp"
 #include "soh/SohGui/SohGui.hpp"
-#include "ResourceManager.h"
-#include "DisplayList.h"
+#include <ship/resource/ResourceManager.h>
+#include <fast/resource/ResourceType.h>
+#include <fast/resource/type/DisplayList.h>
 #include "soh/OTRGlobals.h"
 
 #include <array>
@@ -89,6 +90,7 @@ void PerformDisplayListSearch() {
 }
 
 void DLViewerWindow::DrawElement() {
+    ImGui::BeginDisabled(CVarGetInteger(CVAR_SETTING("DisableChanges"), 0));
     // Debounce the search field as listing otr files is expensive
     UIWidgets::PushStyleInput(THEME_COLOR);
     ImGui::PushFont(OTRGlobals::Instance->fontMonoLarger);
@@ -122,6 +124,7 @@ void DLViewerWindow::DrawElement() {
 
     if (activeDisplayList == "") {
         ImGui::PopFont();
+        ImGui::EndDisabled();
         return;
     }
 
@@ -131,6 +134,8 @@ void DLViewerWindow::DrawElement() {
 
         if (res->GetInitData()->Type != static_cast<uint32_t>(Fast::ResourceType::DisplayList)) {
             ImGui::Text("Resource type is not a Display List. Please choose another.");
+            ImGui::PopFont();
+            ImGui::EndDisabled();
             return;
         }
 
@@ -325,13 +330,10 @@ void DLViewerWindow::DrawElement() {
             }
             ImGui::EndGroup();
         }
-    } catch (const std::exception& e) {
-        ImGui::Text("Error displaying DL instructions.");
-        ImGui::PopFont();
-        return;
-    }
+    } catch (const std::exception& e) { ImGui::Text("Error displaying DL instructions."); }
 
     ImGui::PopFont();
+    ImGui::EndDisabled();
 }
 
 void DLViewerWindow::InitElement() {

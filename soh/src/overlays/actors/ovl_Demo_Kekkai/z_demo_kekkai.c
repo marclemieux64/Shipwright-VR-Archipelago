@@ -7,6 +7,7 @@
 #include "z_demo_kekkai.h"
 #include "objects/object_demo_kekkai/object_demo_kekkai.h"
 #include "scenes/dungeons/ganontika/ganontika_scene.h"
+#include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/ResourceManagerHelpers.h"
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_DRAW_CULLING_DISABLED)
@@ -257,13 +258,15 @@ void DemoKekkai_TrialBarrierIdle(Actor* thisx, PlayState* play) {
     CollisionCheck_SetAT(play, &play->colChkCtx, &this->collider1.base);
     CollisionCheck_SetOC(play, &play->colChkCtx, &this->collider1.base);
     if (this->collider2.base.acFlags & AC_HIT) {
-        Sfx_PlaySfxCentered(NA_SE_SY_CORRECT_CHIME);
-        // "I got it"
-        LOG_STRING("当ったよ");
-        this->actor.update = DemoKekkai_TrialBarrierDispel;
-        this->timer = 0;
-        play->csCtx.segment = SEGMENTED_TO_VIRTUAL(sSageCutscenes[this->actor.params]);
-        gSaveContext.cutsceneTrigger = 1;
+        if (GameInteractor_Should(VB_PLAY_DISPEL_BARRIER_CS, true, this)) {
+            Sfx_PlaySfxCentered(NA_SE_SY_CORRECT_CHIME);
+            // "I got it"
+            LOG_STRING("当ったよ");
+            this->actor.update = DemoKekkai_TrialBarrierDispel;
+            this->timer = 0;
+            play->csCtx.segment = SEGMENTED_TO_VIRTUAL(sSageCutscenes[this->actor.params]);
+            gSaveContext.cutsceneTrigger = 1;
+        }
     }
     CollisionCheck_SetAC(play, &play->colChkCtx, &this->collider2.base);
     func_8002F974(&this->actor, NA_SE_EV_TOWER_ENERGY - SFX_FLAG);
@@ -299,15 +302,16 @@ void DemoKekkai_DrawTrialBarrier(Actor* thisx, PlayState* play2) {
         Matrix_Translate(0.0f, -1200.0f, 0.0f, MTXMODE_APPLY);
         gSPMatrix(POLY_XLU_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
         gSPSegment(POLY_XLU_DISP++, 0x09,
-                   Gfx_TwoTexScroll(play->state.gfxCtx, 0, frames * 5, frames * -10, 0x20, 0x20, 1, frames * 5,
-                                    frames * -10, 0x20, 0x20));
+                   Gfx_TwoTexScrollEx(play->state.gfxCtx, 0, frames * 5, frames * -10, 0x20, 0x20, 1, frames * 5,
+                                      frames * -10, 0x20, 0x20, 5, -10, 5, -10));
         gSPDisplayList(POLY_XLU_DISP++, gTrialBarrierOrbDL);
         Matrix_Pop();
         gSPMatrix(POLY_XLU_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
         gDPPipeSync(POLY_XLU_DISP++);
         gDPSetPrimColor(POLY_XLU_DISP++, 0x00, 0x80, 50, 0, 100, 255);
-        gSPSegment(POLY_XLU_DISP++, 0x0A,
-                   Gfx_TwoTexScroll(play->state.gfxCtx, 0, 0, 0, 0x20, 0x20, 1, frames, frames, 0x20, 0x20));
+        gSPSegment(
+            POLY_XLU_DISP++, 0x0A,
+            Gfx_TwoTexScrollEx(play->state.gfxCtx, 0, 0, 0, 0x20, 0x20, 1, frames, frames, 0x20, 0x20, 0, 0, 1, 1));
         gSPDisplayList(POLY_XLU_DISP++, gTrialBarrierFloorDL);
         gDPPipeSync(POLY_XLU_DISP++);
         gDPSetPrimColor(POLY_XLU_DISP++, 0x00, 0x80, sEnergyColors[colorIndex + 0], sEnergyColors[colorIndex + 1],
@@ -315,8 +319,8 @@ void DemoKekkai_DrawTrialBarrier(Actor* thisx, PlayState* play2) {
         gDPSetEnvColor(POLY_XLU_DISP++, sEnergyColors[colorIndex + 3], sEnergyColors[colorIndex + 4],
                        sEnergyColors[colorIndex + 5], 128);
         gSPSegment(POLY_XLU_DISP++, 0x08,
-                   Gfx_TwoTexScroll(play->state.gfxCtx, 0, frames * 5, frames * -10, 0x20, 0x20, 1, frames * 5,
-                                    frames * -10, 0x20, 0x40));
+                   Gfx_TwoTexScrollEx(play->state.gfxCtx, 0, frames * 5, frames * -10, 0x20, 0x20, 1, frames * 5,
+                                      frames * -10, 0x20, 0x40, 5, -10, 5, -10));
         gSPDisplayList(POLY_XLU_DISP++, gTrialBarrierEnergyDL);
         CLOSE_DISPS(play->state.gfxCtx);
     }
@@ -333,8 +337,8 @@ void DemoKekkai_DrawTowerBarrier(Actor* thisx, PlayState* play) {
     gSPMatrix(POLY_XLU_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
     gDPSetPrimColor(POLY_XLU_DISP++, 0x00, 0x80, 255, 170, 255, 255);
     gSPSegment(POLY_XLU_DISP++, 0x08,
-               Gfx_TwoTexScroll(play->state.gfxCtx, 0, scroll * 2, scroll * -4, 0x20, 0x40, 1, scroll * 2, scroll * -4,
-                                0x20, 0x40));
+               Gfx_TwoTexScrollEx(play->state.gfxCtx, 0, scroll * 2, scroll * -4, 0x20, 0x40, 1, scroll * 2,
+                                  scroll * -4, 0x20, 0x40, 2, -4, 2, -4));
     gSPDisplayList(POLY_XLU_DISP++, gTowerBarrierDL);
     CLOSE_DISPS(play->state.gfxCtx);
 }

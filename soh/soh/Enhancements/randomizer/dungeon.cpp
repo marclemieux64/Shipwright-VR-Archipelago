@@ -2,7 +2,7 @@
 
 #include "3drando/pool_functions.hpp"
 #include "static_data.h"
-#include "context.h"
+#include "SeedContext.h"
 
 namespace Rando {
 DungeonInfo::DungeonInfo(std::string name_, const RandomizerHintTextKey hintKey_, const RandomizerGet map_,
@@ -259,4 +259,11 @@ void Dungeons::ParseJson(nlohmann::json spoilerFileJson) {
         }
     }
 }
+
+void Dungeons::ResetAllDungeons() {
+    for (auto& dungeon : dungeonList) {
+        dungeon.ClearMQ();
+    }
+}
+
 } // namespace Rando

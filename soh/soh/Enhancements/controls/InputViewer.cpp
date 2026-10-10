@@ -1,15 +1,15 @@
 #include "InputViewer.h"
 
-#include "public/bridge/consolevariablebridge.h"
+#include <libultraship/bridge/consolevariablebridge.h>
 #include "libultraship/libultra/controller.h"
-#include "Context.h"
+#include <ship/Context.h>
+#include <libultraship/controller/controldeck/ControlDeck.h>
 #include "soh/OTRGlobals.h"
 #include "soh/cvar_prefixes.h"
 #include <imgui.h>
 #include <spdlog/spdlog.h>
 #include <cmath>
 
-#include "soh/SohGui/UIWidgets.hpp"
 #include "soh/SohGui/UIWidgets.hpp"
 #include "soh/SohGui/SohGui.hpp"
 
@@ -20,22 +20,21 @@ static Color_RGBA8 textColorDefault = { 255, 255, 255, 255 };
 static Color_RGBA8 range1ColorDefault = { 255, 178, 0, 255 };
 static Color_RGBA8 range2ColorDefault = { 0, 255, 0, 255 };
 
-static std::unordered_map<int32_t, const char*> buttonOutlineOptions = {
-    { BUTTON_OUTLINE_ALWAYS_SHOWN, "Always Shown" },
-    { BUTTON_OUTLINE_NOT_PRESSED, "Shown Only While Not Pressed" },
-    { BUTTON_OUTLINE_PRESSED, "Shown Only While Pressed" },
-    { BUTTON_OUTLINE_ALWAYS_HIDDEN, "Always Hidden" }
-};
-static std::unordered_map<int32_t, const char*> buttonOutlineOptionsVerbose = {
+static std::map<int32_t, const char*> buttonOutlineOptions = { { BUTTON_OUTLINE_ALWAYS_SHOWN, "Always Shown" },
+                                                               { BUTTON_OUTLINE_NOT_PRESSED,
+                                                                 "Shown Only While Not Pressed" },
+                                                               { BUTTON_OUTLINE_PRESSED, "Shown Only While Pressed" },
+                                                               { BUTTON_OUTLINE_ALWAYS_HIDDEN, "Always Hidden" } };
+static std::map<int32_t, const char*> buttonOutlineOptionsVerbose = {
     { BUTTON_OUTLINE_ALWAYS_SHOWN, "Outline Always Shown" },
     { BUTTON_OUTLINE_NOT_PRESSED, "Outline Shown Only While Not Pressed" },
     { BUTTON_OUTLINE_PRESSED, "Outline Shown Only While Pressed" },
     { BUTTON_OUTLINE_ALWAYS_HIDDEN, "Outline Always Hidden" }
 };
 
-static std::unordered_map<int32_t, const char*> stickModeOptions = { { STICK_MODE_ALWAYS_SHOWN, "Always" },
-                                                                     { STICK_MODE_HIDDEN_IN_DEADZONE, "While In Use" },
-                                                                     { STICK_MODE_ALWAYS_HIDDEN, "Never" } };
+static std::map<int32_t, const char*> stickModeOptions = { { STICK_MODE_ALWAYS_SHOWN, "Always" },
+                                                           { STICK_MODE_HIDDEN_IN_DEADZONE, "While In Use" },
+                                                           { STICK_MODE_ALWAYS_HIDDEN, "Never" } };
 
 InputViewer::~InputViewer() {
     SPDLOG_TRACE("destruct input viewer");
@@ -49,14 +48,14 @@ void InputViewer::RenderButton(std::string btnTexture, std::string btnOutlineTex
     if (outlineMode == BUTTON_OUTLINE_ALWAYS_SHOWN || (outlineMode == BUTTON_OUTLINE_NOT_PRESSED && !state) ||
         (outlineMode == BUTTON_OUTLINE_PRESSED && state)) {
         ImGui::Image(Ship::Context::GetInstance()->GetWindow()->GetGui()->GetTextureByName(btnOutlineTexture), size,
-                     ImVec2(0, 0), ImVec2(1.0f, 1.0f), ImVec4(255, 255, 255, 255));
+                     ImVec2(0, 0), ImVec2(1.0f, 1.0f));
     }
     // Render button if pressed
     if (state) {
         ImGui::SetCursorPos(pos);
         ImGui::SetNextItemAllowOverlap();
         ImGui::Image(Ship::Context::GetInstance()->GetWindow()->GetGui()->GetTextureByName(btnTexture), size,
-                     ImVec2(0, 0), ImVec2(1.0f, 1.0f), ImVec4(255, 255, 255, 255));
+                     ImVec2(0, 0), ImVec2(1.0f, 1.0f));
     }
 }
 
@@ -151,7 +150,7 @@ void InputViewer::DrawElement() {
         }
 
         ImVec2 mainPos = ImGui::GetWindowPos();
-        ImVec2 size = ImGui::GetContentRegionAvail();
+        ImVec2 size = ImGui::GetMainViewport()->WorkSize;
 
 #ifdef __WIIU__
         const float scale = CVarGetFloat(CVAR_INPUT_VIEWER("Scale"), 1.0f) * 2.0f;
@@ -201,7 +200,7 @@ void InputViewer::DrawElement() {
                 // Background
                 ImGui::Image(
                     Ship::Context::GetInstance()->GetWindow()->GetGui()->GetTextureByName("Input-Viewer-Background"),
-                    scaledBGSize, ImVec2(0, 0), ImVec2(1.0f, 1.0f), ImVec4(255, 255, 255, 255));
+                    scaledBGSize, ImVec2(0, 0), ImVec2(1.0f, 1.0f));
             }
 
             // A/B
@@ -345,14 +344,14 @@ void InputViewer::DrawElement() {
             // Analog Stick
             const int analogOutlineMode =
                 CVarGetInteger(CVAR_INPUT_VIEWER("AnalogStick.OutlineMode"), STICK_MODE_ALWAYS_SHOWN);
-            const float maxStickDistance = CVarGetInteger(CVAR_INPUT_VIEWER("AnalogStick.Movement"), 12);
+            const int32_t maxStickDistance = CVarGetInteger(CVAR_INPUT_VIEWER("AnalogStick.Movement"), 12);
             if (analogOutlineMode == STICK_MODE_ALWAYS_SHOWN ||
                 (analogOutlineMode == STICK_MODE_HIDDEN_IN_DEADZONE && !analogStickIsInDeadzone)) {
                 ImGui::SetNextItemAllowOverlap();
                 ImGui::SetCursorPos(aPos);
                 ImGui::Image(
                     Ship::Context::GetInstance()->GetWindow()->GetGui()->GetTextureByName("Analog-Stick Outline"),
-                    scaledBGSize, ImVec2(0, 0), ImVec2(1.0f, 1.0f), ImVec4(255, 255, 255, 255));
+                    scaledBGSize, ImVec2(0, 0), ImVec2(1.0f, 1.0f));
             }
             const int analogStickMode =
                 CVarGetInteger(CVAR_INPUT_VIEWER("AnalogStick.VisibilityMode"), STICK_MODE_ALWAYS_SHOWN);
@@ -363,11 +362,11 @@ void InputViewer::DrawElement() {
                     ImVec2(aPos.x + maxStickDistance * ((float)(pads[0].stick_x) / MAX_AXIS_RANGE) * scale,
                            aPos.y - maxStickDistance * ((float)(pads[0].stick_y) / MAX_AXIS_RANGE) * scale));
                 ImGui::Image(Ship::Context::GetInstance()->GetWindow()->GetGui()->GetTextureByName("Analog-Stick"),
-                             scaledBGSize, ImVec2(0, 0), ImVec2(1.0f, 1.0f), ImVec4(255, 255, 255, 255));
+                             scaledBGSize, ImVec2(0, 0), ImVec2(1.0f, 1.0f));
             }
 
             // Right Stick
-            const float maxRightStickDistance = CVarGetInteger(CVAR_INPUT_VIEWER("RightStick.Movement"), 7);
+            const int32_t maxRightStickDistance = CVarGetInteger(CVAR_INPUT_VIEWER("RightStick.Movement"), 7);
             const int rightOutlineMode =
                 CVarGetInteger(CVAR_INPUT_VIEWER("RightStick.OutlineMode"), STICK_MODE_ALWAYS_HIDDEN);
             if (rightOutlineMode == STICK_MODE_ALWAYS_SHOWN ||
@@ -376,7 +375,7 @@ void InputViewer::DrawElement() {
                 ImGui::SetCursorPos(aPos);
                 ImGui::Image(
                     Ship::Context::GetInstance()->GetWindow()->GetGui()->GetTextureByName("Right-Stick Outline"),
-                    scaledBGSize, ImVec2(0, 0), ImVec2(1.0f, 1.0f), ImVec4(255, 255, 255, 255));
+                    scaledBGSize, ImVec2(0, 0), ImVec2(1.0f, 1.0f));
             }
             const int rightStickMode =
                 CVarGetInteger(CVAR_INPUT_VIEWER("RightStick.VisibilityMode"), STICK_MODE_ALWAYS_HIDDEN);
@@ -387,7 +386,7 @@ void InputViewer::DrawElement() {
                     ImVec2(aPos.x + maxRightStickDistance * ((float)(pads[0].right_stick_x) / MAX_AXIS_RANGE) * scale,
                            aPos.y - maxRightStickDistance * ((float)(pads[0].right_stick_y) / MAX_AXIS_RANGE) * scale));
                 ImGui::Image(Ship::Context::GetInstance()->GetWindow()->GetGui()->GetTextureByName("Right-Stick"),
-                             scaledBGSize, ImVec2(0, 0), ImVec2(1.0f, 1.0f), ImVec4(255, 255, 255, 255));
+                             scaledBGSize, ImVec2(0, 0), ImVec2(1.0f, 1.0f));
             }
 
             // Analog stick angle text
@@ -401,7 +400,7 @@ void InputViewer::DrawElement() {
                 ImGui::PushFont(ImGui::GetFont());
 
                 // Calculate polar R coordinate from X and Y angles, squared to avoid sqrt
-                const float rSquared = pads[0].stick_x * pads[0].stick_x + pads[0].stick_y * pads[0].stick_y;
+                const int32_t rSquared = pads[0].stick_x * pads[0].stick_x + pads[0].stick_y * pads[0].stick_y;
 
                 // ESS range
                 const int range1Min = CVarGetInteger(CVAR_INPUT_VIEWER("AnalogAngles.Range1.Min"), 8);
@@ -584,7 +583,7 @@ void InputViewerSettingsWindow::DrawElement() {
         }
         // gInputViewer.Dpad
         CVarCheckbox("Show D-Pad Layers", CVAR_INPUT_VIEWER("Dpad"),
-                     CheckboxOptions().Color(THEME_COLOR).DefaultValue(true));
+                     CheckboxOptions().Color(THEME_COLOR).DefaultValue(false));
         if (useIndividualOutlines && CVarGetInteger(CVAR_INPUT_VIEWER("Dpad"), 0)) {
             ImGui::Indent();
             CVarCombobox("##DpadOutline", CVAR_INPUT_VIEWER("DpadOutlineMode"), buttonOutlineOptionsVerbose,
@@ -593,7 +592,7 @@ void InputViewerSettingsWindow::DrawElement() {
         }
         // gInputViewer.Mod1
         CVarCheckbox("Show Modifier Button 1 Layers", CVAR_INPUT_VIEWER("Mod1"),
-                     CheckboxOptions().Color(THEME_COLOR).DefaultValue(true));
+                     CheckboxOptions().Color(THEME_COLOR).DefaultValue(false));
         if (useIndividualOutlines && CVarGetInteger(CVAR_INPUT_VIEWER("Mod1"), 0)) {
             ImGui::Indent();
             CVarCombobox("##Mmod1Outline", CVAR_INPUT_VIEWER("Mod1OutlineMode"), buttonOutlineOptionsVerbose,
@@ -602,7 +601,7 @@ void InputViewerSettingsWindow::DrawElement() {
         }
         // gInputViewer.Mod2
         CVarCheckbox("Show Modifier Button 2 Layers", CVAR_INPUT_VIEWER("Mod2"),
-                     CheckboxOptions().Color(THEME_COLOR).DefaultValue(true));
+                     CheckboxOptions().Color(THEME_COLOR).DefaultValue(false));
         if (useIndividualOutlines && CVarGetInteger(CVAR_INPUT_VIEWER("Mod2"), 0)) {
             ImGui::Indent();
             CVarCombobox("##Mod2Outline", CVAR_INPUT_VIEWER("Mod2OutlineMode"), buttonOutlineOptionsVerbose,
@@ -652,7 +651,7 @@ void InputViewerSettingsWindow::DrawElement() {
             "Right Stick Visibility", CVAR_INPUT_VIEWER("RightStick.VisibilityMode"), stickModeOptions,
             ComboboxOptions()
                 .Color(THEME_COLOR)
-                .DefaultIndex(STICK_MODE_ALWAYS_SHOWN)
+                .DefaultIndex(STICK_MODE_ALWAYS_HIDDEN)
                 .Tooltip(
                     "Determines the conditions under which the moving layer of the right stick texture is visible."));
 
@@ -661,7 +660,7 @@ void InputViewerSettingsWindow::DrawElement() {
             "Right Stick Outline/Background Visibility", CVAR_INPUT_VIEWER("RightStick.OutlineMode"), stickModeOptions,
             ComboboxOptions()
                 .Color(THEME_COLOR)
-                .DefaultIndex(STICK_MODE_ALWAYS_SHOWN)
+                .DefaultIndex(STICK_MODE_ALWAYS_HIDDEN)
                 .Tooltip(
                     "Determines the conditions under which the right stick outline/background texture is visible."));
 

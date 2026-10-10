@@ -1,15 +1,7 @@
-#include "bootcommands.h"
-#include "gameconsole.h"
-#include <macros.h>
-#include <z64.h>
-#include <libultraship/libultra.h>
+#include <stddef.h>
+#include <stdbool.h>
 #include <libultraship/bridge.h>
-#include <functions.h>
-#include <variables.h>
-#include <string.h>
-#include <stdarg.h>
-#include <z64.h>
-#include "soh/OTRGlobals.h"
+#include "bootcommands.h"
 #include "soh/cvar_prefixes.h"
 
 void BootCommands_Init() {
@@ -19,6 +11,10 @@ void BootCommands_Init() {
     CVarClear(CVAR_GENERAL("OnFileSelectNameEntry")); // Clear when soh is killed on the file name entry page
     CVarClear(CVAR_GENERAL("BetterDebugWarpScreenMQMode"));
     CVarClear(CVAR_GENERAL("BetterDebugWarpScreenMQModeScene"));
+
+    CVarClear(CVAR_REMOTE_ARCHIPELAGO("ConnectionStatus")); // Clear on boot to reset connection status
+    CVarClear(CVAR_REMOTE_ARCHIPELAGO("ConnectionStatusInGame"));
+
 #if defined(__SWITCH__) || defined(__WIIU__)
     CVarRegisterInteger(CVAR_IMGUI_CONTROLLER_NAV, 1); // always enable controller nav on switch/wii u
 #endif

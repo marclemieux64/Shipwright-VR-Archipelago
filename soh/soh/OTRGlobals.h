@@ -15,8 +15,13 @@
 #define BTN_CUSTOM_OCARINA_PITCH_UP ((CONTROLLERBUTTONS_T)0x00400000)
 #define BTN_CUSTOM_OCARINA_PITCH_DOWN ((CONTROLLERBUTTONS_T)0x00800000)
 
+#define M_PIf 3.14159265358979323846f
+#define M_PI_2f 1.57079632679489661923f // pi/2
+#define M_SQRT2f 1.41421356237309504880f
+#define M_SQRT1_2f 0.70710678118654752440f /* 1/sqrt(2) */
+
 #ifdef __cplusplus
-#include <Context.h>
+#include <ship/Context.h>
 #include "Enhancements/savestates.h"
 #include "Enhancements/randomizer/randomizer.h"
 #include <vector>
@@ -30,7 +35,6 @@ struct ExtensionEntry {
 extern std::unordered_map<std::string, ExtensionEntry> ExtensionCache;
 #include "Enhancements/randomizer/settings.h"
 
-const std::string customMessageTableID = "BaseGameOverrides";
 const std::string appShortName = "soh";
 
 #ifdef __WIIU__
@@ -54,19 +58,21 @@ class OTRGlobals {
     ImFont* defaultFontLarger;
     ImFont* defaultFontLargest;
 
-    ImFont* fontMonoSmall;
-    ImFont* fontStandard;
-    ImFont* fontStandardLarger;
-    ImFont* fontStandardLargest;
-    ImFont* fontMono;
-    ImFont* fontMonoLarger;
-    ImFont* fontMonoLargest;
+    ImFont* fontMonoSmall = nullptr;
+    ImFont* fontStandard = nullptr;
+    ImFont* fontStandardLarger = nullptr;
+    ImFont* fontStandardLargest = nullptr;
+    ImFont* fontMono = nullptr;
+    ImFont* fontMonoLarger = nullptr;
+    ImFont* fontMonoLargest = nullptr;
+    ImFont* fontJapanese = nullptr;
 
     OTRGlobals();
     ~OTRGlobals();
 
     void ScaleImGui();
-
+    void Initialize();
+    void RunExtract(int argc, char* argv[]);
     bool HasMasterQuest();
     bool HasOriginal();
     uint32_t GetInterpolationFPS();
@@ -77,12 +83,12 @@ class OTRGlobals {
     bool hasMasterQuest;
     bool hasOriginal;
     ImFont* CreateDefaultFontWithSize(float size);
-    ImFont* CreateFontWithSize(float size, std::string fontPath);
+    ImFont* CreateFontWithSize(float size, std::string fontPath, bool isJapaneseFont = false);
 };
 #endif
 
 #ifndef __cplusplus
-void InitOTR(void);
+void InitOTR(int argc, char* argv[]);
 void DeinitOTR(void);
 void VanillaItemTable_Init();
 void OTRAudio_Init();
@@ -120,21 +126,14 @@ void AudioMgr_CreateNextAudioBuffer(s16* samples, u32 num_samples);
 int Controller_ShouldRumble(size_t slot);
 void Controller_BlockGameInput();
 void Controller_UnblockGameInput();
-void* getN64WeirdFrame(s32 i);
-int GetEquipNowMessage(char* buffer, char* src, const int maxBufferSize);
+size_t GetEquipNowMessage(char* buffer, char* src, const size_t maxBufferSize);
 u32 SpoilerFileExists(const char* spoilerFileName);
 Sprite* GetSeedTexture(uint8_t index);
 uint8_t GetSeedIconIndex(uint8_t index);
 u8 Randomizer_GetSettingValue(RandomizerSettingKey randoSettingKey);
 RandomizerCheck Randomizer_GetCheckFromActor(s16 actorId, s16 sceneNum, s16 actorParams);
-ScrubIdentity Randomizer_IdentifyScrub(s32 sceneNum, s32 actorParams, s32 respawnData);
-BeehiveIdentity Randomizer_IdentifyBeehive(s32 sceneNum, s16 xPosition, s32 respawnData);
 ShopItemIdentity Randomizer_IdentifyShopItem(s32 sceneNum, u8 slotIndex);
-CowIdentity Randomizer_IdentifyCow(s32 sceneNum, s32 posX, s32 posZ);
-FishIdentity Randomizer_IdentifyFish(s32 sceneNum, s32 actorParams);
 void Randomizer_ParseSpoiler(const char* fileLoc);
-void Randomizer_LoadHintMessages();
-void Randomizer_LoadMerchantMessages();
 bool Randomizer_IsTrialRequired(s32 trialFlag);
 GetItemEntry Randomizer_GetItemFromActor(s16 actorId, s16 sceneNum, s16 actorParams, GetItemID ogId);
 GetItemEntry Randomizer_GetItemFromActorWithoutObtainabilityCheck(s16 actorId, s16 sceneNum, s16 actorParams,
@@ -151,9 +150,7 @@ uint8_t Randomizer_IsSpoilerLoaded();
 void Randomizer_SetSpoilerLoaded(bool spoilerLoaded);
 uint8_t Randomizer_GenerateRandomizer();
 void Randomizer_ShowRandomizerMenu();
-int CustomMessage_RetrieveIfExists(PlayState* play);
-void Overlay_DisplayText(float duration, const char* text);
-void Overlay_DisplayText_Seconds(int seconds, const char* text);
+void Archipelago_ShowArchipelagoMenu();
 GetItemEntry ItemTable_Retrieve(int16_t getItemID);
 GetItemEntry ItemTable_RetrieveEntry(s16 modIndex, s16 getItemID);
 void EntranceTracker_SetCurrentGrottoID(s16 entranceIndex);
@@ -163,9 +160,16 @@ void Gfx_UnregisterBlendedTexture(const char* name);
 void Gfx_TextureCacheDelete(const uint8_t* addr);
 void SaveManager_ThreadPoolWait();
 void CheckTracker_OnMessageClose();
+void CheckTracker_RecalculateAvailableChecks();
 
 GetItemID RetrieveGetItemIDFromItemID(ItemID itemID);
 RandomizerGet RetrieveRandomizerGetFromItemID(ItemID itemID);
+void ParseArchipelago();
+bool checkArchipelagoSlotInfo(const char* slotName, const char* roomHash);
+void Messagebox_ShowErrorBox(char* title, char* body);
+
+uint32_t Ship_GetInterpolationFPS();
+uint32_t Ship_GetInterpolationFrameCount();
 #endif
 
 #ifdef __cplusplus

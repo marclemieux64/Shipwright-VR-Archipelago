@@ -6,15 +6,17 @@
 #include <map>
 #include <spdlog/spdlog.h>
 #include <variables.h>
+#include <soh/Enhancements/gameconsole.h>
+#include <soh/util.h>
 
 using namespace std::literals::string_literals;
 
 static const std::unordered_map<std::string, char> textBoxSpecialCharacters = {
-    { "À", 0x80 }, { "î", 0x81 }, { "Â", 0x82 }, { "Ä", 0x83 }, { "Ç", 0x84 }, { "È", 0x85 }, { "É", 0x86 },
-    { "Ê", 0x87 }, { "Ë", 0x88 }, { "Ï", 0x89 }, { "Ô", 0x8A }, { "Ö", 0x8B }, { "Ù", 0x8C }, { "Û", 0x8D },
-    { "Ü", 0x8E }, { "ß", 0x8F }, { "à", 0x90 }, { "á", 0x91 }, { "â", 0x92 }, { "ä", 0x93 }, { "ç", 0x94 },
-    { "è", 0x95 }, { "é", 0x96 }, { "ê", 0x97 }, { "ë", 0x98 }, { "ï", 0x99 }, { "ô", 0x9A }, { "ö", 0x9B },
-    { "ù", 0x9C }, { "û", 0x9D }, { "ü", 0x9E }
+    { "¥", 0x5C }, { "‾", 0x7F }, { "À", 0x80 }, { "î", 0x81 }, { "Â", 0x82 }, { "Ä", 0x83 }, { "Ç", 0x84 },
+    { "È", 0x85 }, { "É", 0x86 }, { "Ê", 0x87 }, { "Ë", 0x88 }, { "Ï", 0x89 }, { "Ô", 0x8A }, { "Ö", 0x8B },
+    { "Ù", 0x8C }, { "Û", 0x8D }, { "Ü", 0x8E }, { "ß", 0x8F }, { "à", 0x90 }, { "á", 0x91 }, { "â", 0x92 },
+    { "ä", 0x93 }, { "ç", 0x94 }, { "è", 0x95 }, { "é", 0x96 }, { "ê", 0x97 }, { "ë", 0x98 }, { "ï", 0x99 },
+    { "ô", 0x9A }, { "ö", 0x9B }, { "ù", 0x9C }, { "û", 0x9D }, { "ü", 0x9E }
 };
 static const std::unordered_map<std::string, std::string> percentColors = {
     { "w", QM_WHITE }, { "r", QM_RED },  { "g", QM_GREEN },  { "b", QM_BLUE },
@@ -155,11 +157,12 @@ const std::string CustomMessage::GetFrench(MessageFormat format) const {
 }
 
 const std::string CustomMessage::GetForCurrentLanguage(MessageFormat format) const {
-    return GetForLanguage((gSaveContext.language == LANGUAGE_JPN) ? LANGUAGE_ENG : gSaveContext.language, format);
+    return GetForLanguage(
+        ((Language)gSaveContext.language == LANGUAGE_JPN) ? LANGUAGE_ENG : (Language)gSaveContext.language, format);
 }
 
 const std::string CustomMessage::GetForLanguage(uint8_t language, MessageFormat format) const {
-    std::string output = messages[language].length() > 0 ? messages[language] : messages[LANGUAGE_ENG];
+    std::string output = !messages[language].starts_with(TODO_TRANSLATE) ? messages[language] : messages[LANGUAGE_ENG];
     ProcessMessageFormat(output, format);
     return output;
 }
@@ -211,6 +214,10 @@ const TextBoxPosition& CustomMessage::GetTextBoxPosition() const {
     return position;
 }
 
+void CustomMessage::SetTextBoxPosition(TextBoxPosition boxPos) {
+    position = boxPos;
+}
+
 CustomMessage CustomMessage::operator+(const CustomMessage& right) const {
     std::vector<std::string> newColors = colors;
     std::vector<std::string> rColors = right.GetColors();
@@ -260,12 +267,35 @@ bool CustomMessage::operator!=(const CustomMessage& operand) const {
     return !operator==(operand);
 }
 
+void CustomMessage::LoadIntoFont() {
+    MessageContext* msgCtx = &gPlayState->msgCtx;
+    Font* font = &msgCtx->font;
+    char* buffer = font->msgBuf;
+    const size_t maxBufferSize = sizeof(font->msgBuf);
+    font->charTexBuf[0] = (type << 4) | position;
+    switch (gSaveContext.language) {
+        case LANGUAGE_FRA:
+            msgCtx->msgLength = font->msgLength =
+                SohUtils::CopyStringToCharBuffer(buffer, GetFrench(MF_RAW), maxBufferSize);
+            break;
+        case LANGUAGE_GER:
+            msgCtx->msgLength = font->msgLength =
+                SohUtils::CopyStringToCharBuffer(buffer, GetGerman(MF_RAW), maxBufferSize);
+            break;
+        case LANGUAGE_ENG:
+        default:
+            msgCtx->msgLength = font->msgLength =
+                SohUtils::CopyStringToCharBuffer(buffer, GetEnglish(MF_RAW), maxBufferSize);
+            break;
+    }
+}
+
 void CustomMessage::Replace(std::string&& oldStr, std::string&& newStr) {
     for (std::string& str : messages) {
         size_t position = str.find(oldStr);
         while (position != std::string::npos) {
             str.replace(position, oldStr.length(), newStr);
-            position = str.find(oldStr);
+            position = str.find(oldStr, position + 1);
         }
     }
 }
@@ -273,8 +303,12 @@ void CustomMessage::Replace(std::string&& oldStr, std::string&& newStr) {
 void CustomMessage::Replace(std::string&& oldStr, CustomMessage newMessage) {
     for (uint8_t language = 0; language < LANGUAGE_MAX - 1; language++) {
         size_t position = messages[language].find(oldStr);
+        std::string newMsg = newMessage.messages[language];
+        if (language != LANGUAGE_ENG && newMsg == TODO_TRANSLATE) {
+            newMsg = newMessage.messages[LANGUAGE_ENG];
+        }
         while (position != std::string::npos) {
-            messages[language].replace(position, oldStr.length(), newMessage.messages[language]);
+            messages[language].replace(position, oldStr.length(), newMsg);
             position = messages[language].find(oldStr);
         }
     }
@@ -307,6 +341,14 @@ void CustomMessage::AutoFormat() {
     for (std::string& str : messages) {
         AutoFormatString(str);
     }
+}
+
+void CustomMessage::AutoFormat(ItemID iid) {
+    for (std::string& str : messages) {
+        str.insert(0, ITEM_OBTAINED(iid));
+    }
+    AutoFormat();
+    Replace(WAIT_FOR_INPUT(), WAIT_FOR_INPUT() + ITEM_OBTAINED(iid));
 }
 
 void CustomMessage::Clean() {
@@ -364,7 +406,7 @@ static size_t NextLineLength(const std::string* textStr, const size_t lastNewlin
         // Skip over control codes
         if (textStr->at(currentPos) == '%') {
             nextPosJump = 2;
-        } else if (textStr->at(currentPos) == '$') {
+        } else if (textStr->at(currentPos) == '\x13') {
             nextPosJump = 2;
         } else if (textStr->at(currentPos) == '@') {
             nextPosJump = 1;
@@ -464,19 +506,39 @@ size_t CustomMessage::FindNEWLINE(std::string& str, size_t lastNewline) const {
     return newLine;
 }
 
+bool CustomMessage::AddBreakString(std::string& str, size_t pos, std::string breakString) const {
+    if (str[pos] == ' ' || str[pos] == '&') {
+        str.replace(pos, 1, breakString);
+        return false;
+    } else {
+        if (pos <= str.size() - 1) {
+            // If the next char is a new textbox, it has priority, ignore whatever we are replacing it with
+            if (str[pos + 1] == '^') {
+                return false;
+                // otherwise, if it is a line break or space, replace it
+            } else if (str[pos + 1] == ' ' || str[pos + 1] == '&') {
+                str.replace(pos + 1, 1, breakString);
+                return false;
+            }
+        }
+        // otherwise insert after it
+        str.insert(pos + 1, breakString);
+        return true;
+    }
+}
+
 void CustomMessage::AutoFormatString(std::string& str) const {
     ReplaceAltarIcons(str);
     ReplaceColors(str);
     // insert newlines either manually or when encountering a '&'
     size_t lastNewline = 0;
-    const bool hasIcon = str.find('$', 0) != std::string::npos;
+    const bool hasIcon = str.find('\x13') != std::string::npos;
     size_t lineLength = NextLineLength(&str, lastNewline, hasIcon);
     size_t lineCount = 1;
-    size_t yesNo = str.find("\x1B"s[0], lastNewline);
+    size_t yesNo = str.find('\x1B', lastNewline);
     while (lastNewline + lineLength < str.length() || yesNo != std::string::npos) {
         const size_t carrot = str.find('^', lastNewline);
         const size_t ampersand = str.find('&', lastNewline);
-        const size_t lastSpace = str.rfind(' ', lastNewline + lineLength);
         size_t waitForInput = str.find(WAIT_FOR_INPUT()[0], lastNewline);
         size_t newLine = FindNEWLINE(str, lastNewline);
         if (carrot < waitForInput) {
@@ -508,13 +570,24 @@ void CustomMessage::AutoFormatString(std::string& str) const {
                     lastNewline = waitForInput + 1;
                     lineCount = 0;
                     // some lines need to be split but don't have spaces, look for periods instead
-                } else if (lastSpace == std::string::npos) {
-                    const size_t lastPeriod = str.rfind('.', lastNewline + lineLength);
-                    str.replace(lastPeriod, 1, ".&");
-                    lastNewline = lastPeriod + 2;
                 } else {
-                    str.replace(lastSpace, 1, "&");
-                    lastNewline = lastSpace + 1;
+                    const size_t lastBreak = str.find_last_of(".,!?- ", lastNewline + lineLength);
+                    // if none exist or we go backwards, we look forward for a something and allow the overflow
+                    if (lastBreak == std::string::npos || lastBreak < lastNewline) {
+                        const size_t nextBreak = str.find_first_of(".,!?- &^", lastNewline);
+                        if (str[nextBreak] == '^') {
+                            lastNewline = nextBreak + 1;
+                            lineCount = 0; // increments to 1 at the end
+                        } else if (str[nextBreak] == '&') {
+                            lastNewline = nextBreak + 1;
+                        } else {
+                            bool isAdded = AddBreakString(str, nextBreak, "&");
+                            lastNewline = nextBreak + 1 + isAdded;
+                        }
+                    } else {
+                        bool isAdded = AddBreakString(str, lastBreak, "&");
+                        lastNewline = lastBreak + 1 + isAdded;
+                    }
                 }
                 lineCount += 1;
             } else {
@@ -531,27 +604,35 @@ void CustomMessage::AutoFormatString(std::string& str) const {
                     // or move the lastNewline cursor to the next line if a '^' is encountered.
                 } else if (carrot < lastNewline + lineLength) {
                     lastNewline = carrot + 1;
-                    // some lines need to be split but don't have spaces, look for periods instead
-                } else if (lastSpace == std::string::npos) {
-                    const size_t lastPeriod = str.rfind('.', lastNewline + lineLength);
-                    str.replace(lastPeriod, 1, ".^" + colorText);
-                    lastNewline = lastPeriod + 2;
+                    // some lines need to be split but don't have spaces, look for punctuation instead
                 } else {
-                    str.replace(lastSpace, 1, "^" + colorText);
-                    lastNewline = lastSpace + 1;
+                    const size_t lastBreak = str.find_last_of(".,!?- &", lastNewline + lineLength);
+                    // if none exist or we go backwards, we look forward for a something and allow the overflow
+                    if (lastBreak == std::string::npos || lastBreak < lastNewline) {
+                        const size_t nextBreak = str.find_first_of(".,!?- &^", lastNewline);
+                        if (str[nextBreak] == '^') {
+                            lastNewline = nextBreak + 1;
+                        } else {
+                            bool isAdded = AddBreakString(str, nextBreak, "^" + colorText);
+                            lastNewline = nextBreak + 1 + isAdded;
+                        }
+                    } else {
+                        bool isAdded = AddBreakString(str, lastBreak, "^" + colorText);
+                        lastNewline = lastBreak + 1 + isAdded;
+                    }
                 }
                 lineCount = 1;
             }
             lineLength = NextLineLength(&str, lastNewline, hasIcon);
         }
-        yesNo = str.find("\x1B"s[0], lastNewline);
+        yesNo = str.find('\x1B', lastNewline);
     }
     ReplaceSpecialCharacters(str);
     ReplaceAltarIcons(str);
     std::replace(str.begin(), str.end(), '&', NEWLINE()[0]);
     std::replace(str.begin(), str.end(), '^', WAIT_FOR_INPUT()[0]);
     std::replace(str.begin(), str.end(), '@', PLAYER_NAME()[0]);
-    std::replace(str.begin(), str.end(), '_', " "[0]);
+    std::replace(str.begin(), str.end(), '_', ' ');
     str += MESSAGE_END();
 }
 
@@ -573,8 +654,31 @@ void CustomMessage::InsertNumber(uint8_t num) {
         }
     }
     // remove the remaining bar
-    this->Replace("|", "");
+    Replace("|", "");
     Replace("[[d]]", std::to_string(num));
+}
+
+void CustomMessage::SetSingularPlural() {
+    for (std::string& str : messages) {
+        size_t firstBar = str.find('|');
+        if (firstBar != std::string::npos) {
+            size_t euroSign = str.find("€");
+            size_t secondBar = str.find('|', firstBar + 1);
+            if (secondBar != std::string::npos) {
+                size_t thirdBar = str.find('|', secondBar + 1);
+                if (thirdBar != std::string::npos) {
+                    if (euroSign == std::string::npos) {
+                        str.erase(secondBar, thirdBar - secondBar);
+                    } else {
+                        str.erase(firstBar, secondBar - firstBar);
+                    }
+                }
+            }
+        }
+    }
+    // remove the remaining bar
+    Replace("|", "");
+    Replace("€", "");
 }
 
 void CustomMessage::Capitalize() {
@@ -621,7 +725,7 @@ void CustomMessage::EncodeColors(std::string& str) const {
             if (const size_t secondHashtag = str.find('#', firstHashtag + 1); secondHashtag != std::string::npos) {
                 str.replace(secondHashtag, 1, "%w");
             } else {
-                SPDLOG_DEBUG("non-matching hashtags in string: \"%s\"", str);
+                SPDLOG_DEBUG("non-matching hashtags in string: \"{}\"", str);
             }
         }
     }
@@ -657,7 +761,7 @@ void CustomMessage::ReplaceAltarIcons(std::string& str) const {
 void CustomMessage::InsertNames(std::vector<CustomMessage> toInsert) {
     for (uint8_t a = 0; a < toInsert.size(); a++) {
         CustomMessage temp = toInsert[a];
-        if ((capital.size() > a) && (capital[a] = true)) {
+        if (capital.size() > a && capital[a]) {
             temp.Capitalize();
         }
         Replace("[[" + std::to_string(a + 1) + "]]", temp);
@@ -690,6 +794,10 @@ std::string CustomMessage::WAIT_FOR_INPUT() {
 
 std::string CustomMessage::PLAYER_NAME() {
     return "\x0F"s;
+}
+
+std::string CustomMessage::TWO_WAY_CHOICE() {
+    return "\x1B"s;
 }
 
 bool CustomMessageManager::InsertCustomMessage(std::string tableID, uint16_t textID, CustomMessage messages) {
