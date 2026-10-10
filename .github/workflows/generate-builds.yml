@@ -1,13 +1,14 @@
-name: generate-builds
+name: Generate Builds
+
 on:
   push:
   pull_request:
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
 jobs:
-  # The VR fork of libultraship (D3D11 + OpenXR) is built on Windows only. The Linux/macOS jobs
-  # were removed, and soh.o2r is generated on the Windows runner itself.
   build-windows:
     runs-on: windows-latest
     steps:
@@ -16,7 +17,7 @@ jobs:
           choco install ninja -y
           Remove-Item -Path "C:\ProgramData\Chocolatey\bin\ccache.exe" -Force -ErrorAction SilentlyContinue
       - name: Git Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           submodules: true
       - name: Configure sccache
@@ -32,7 +33,7 @@ jobs:
             ${{ runner.os }}-ccache
       - name: Restore Cached VCPKG folder
         id: restore-cache-vcpkg
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v4
         with:
           key: ${{ runner.os }}-vcpkg-${{ github.ref }}-${{ github.sha }}
           restore-keys: |
@@ -66,24 +67,16 @@ jobs:
           (cd build-windows && cpack)
           cd ..
           mv _packages/*.zip _packages/soh-windows.zip
-      - name: Diagnose missing soh.o2r
-        if: failure()
-        shell: pwsh
-        run: |
-          Write-Host "--- .o2r / .otr files found ---"
-          Get-ChildItem -Recurse -Include *.o2r,*.otr -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
-          Write-Host "--- ZAPD binaries ---"
-          Get-ChildItem -Recurse -Include ZAPD*.exe,ZAPD*.out -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
       - name: Unzip package
         run: Expand-Archive -Path _packages/soh-windows.zip -DestinationPath soh-windows
       - name: Upload build
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: soh-windows
           path: soh-windows
       - name: Save Cache VCPKG folder
         if: ${{ github.ref_name == github.event.repository.default_branch }}
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@v4
         with:
           key: ${{ steps.restore-cache-vcpkg.outputs.cache-primary-key }}
           path: vcpkg

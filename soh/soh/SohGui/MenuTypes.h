@@ -271,10 +271,10 @@ static const std::map<Ship::AudioBackend, const char*> audioBackendsMap = {
     { Ship::AudioBackend::NUL, "Null" },
 };
 
-static const std::map<Ship::WindowBackend, const char*> windowBackendsMap = {
-    { Ship::WindowBackend::FAST3D_DXGI_DX11, "DirectX" },
-    { Ship::WindowBackend::FAST3D_SDL_OPENGL, "OpenGL" },
-    { Ship::WindowBackend::FAST3D_SDL_METAL, "Metal" },
+static const std::map<Fast::WindowBackend, const char*> windowBackendsMap = {
+    { Fast::Fast::WindowBackend::FAST3D_DXGI_DX11, "DirectX" },
+    { Fast::Fast::WindowBackend::FAST3D_SDL_OPENGL, "OpenGL" },
+    { Fast::Fast::WindowBackend::FAST3D_SDL_METAL, "Metal" },
 };
 
 struct MenuInit {
