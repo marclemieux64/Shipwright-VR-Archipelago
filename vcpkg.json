@@ -5,7 +5,7 @@
     "glfw3",
     "glm",
     "libogg",
-    "libopus",
+    "opus",
     "libpng",
     "libvorbis",
     "libzip",
