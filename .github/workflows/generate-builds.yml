@@ -68,6 +68,7 @@ jobs:
         retention-days: 3
 
   build-linux:
+    if: false
     needs: generate-soh-otr
     runs-on: ubuntu-22.04
     steps:
