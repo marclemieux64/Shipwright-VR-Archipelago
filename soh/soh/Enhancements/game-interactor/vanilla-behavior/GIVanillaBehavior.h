@@ -3163,6 +3163,7 @@ typedef enum {
     // ```
     // #### `args`
     // - `*FileChooseContext`
+    // - `s16`
     VB_FILE_SELECT_DRAW_DEATHS,
 
     // #### `result`
@@ -3171,6 +3172,7 @@ typedef enum {
     // ```
     // #### `args`
     // - `*FileChooseContext`
+    // - `s16`
     VB_FILE_SELECT_DRAW_HEARTS,
 
     // #### `result`
@@ -3189,6 +3191,7 @@ typedef enum {
     // ```
     // #### `args`
     // - `*FileChooseContext`
+    // - `s16`
     VB_FILE_SELECT_DRAW_FILE_INFO_BOX,
 
     // #### `result`

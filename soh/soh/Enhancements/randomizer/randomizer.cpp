@@ -844,20 +844,28 @@ ShopItemIdentity Randomizer::IdentifyShopItem(s32 sceneNum, u8 slotIndex) {
         (sceneNum == SCENE_BAZAAR && gSaveContext.entranceIndex == ENTR_BAZAAR_0) ? SCENE_TEST01 : sceneNum,
         slotIndex - 1);
 
-    if (location->GetRandomizerCheck() != RC_UNKNOWN_CHECK) {
-        shopItemIdentity.identity.randomizerInf = rcToRandomizerInf[location->GetRandomizerCheck()];
-        shopItemIdentity.identity.randomizerCheck = location->GetRandomizerCheck();
-        shopItemIdentity.ogItemId = (GetItemID)Rando::StaticData::RetrieveItem(location->GetVanillaItem()).GetItemID();
+    RandomizerCheck randoCheck = location->GetRandomizerCheck();
 
-        RandomizerGet randoGet = Rando::Context::GetInstance()
-                                     ->GetItemLocation(shopItemIdentity.identity.randomizerCheck)
-                                     ->GetPlacedRandomizerGet();
-        if (randomizerGetToEnGirlShopItem.find(randoGet) != randomizerGetToEnGirlShopItem.end()) {
-            shopItemIdentity.enGirlAShopItem = randomizerGetToEnGirlShopItem[randoGet];
+    if (randoCheck != RC_UNKNOWN_CHECK) {
+        RandomizerGet randoGet = Rando::Context::GetInstance()->GetItemLocation(randoCheck)->GetPlacedRandomizerGet();
+
+        if (randoGet != RG_NONE) {
+            shopItemIdentity.identity.randomizerInf = rcToRandomizerInf[randoCheck];
+            shopItemIdentity.identity.randomizerCheck = randoCheck;
+            shopItemIdentity.ogItemId =
+                (GetItemID)Rando::StaticData::RetrieveItem(location->GetVanillaItem()).GetItemID();
+
+            RandomizerGet randoGet = Rando::Context::GetInstance()
+                                         ->GetItemLocation(shopItemIdentity.identity.randomizerCheck)
+                                         ->GetPlacedRandomizerGet();
+            if (randomizerGetToEnGirlShopItem.find(randoGet) != randomizerGetToEnGirlShopItem.end()) {
+                shopItemIdentity.enGirlAShopItem = randomizerGetToEnGirlShopItem[randoGet];
+            }
+
+            shopItemIdentity.itemPrice =
+                OTRGlobals::Instance->gRandoContext->GetItemLocation(shopItemIdentity.identity.randomizerCheck)
+                    ->GetPrice();
         }
-
-        shopItemIdentity.itemPrice =
-            OTRGlobals::Instance->gRandoContext->GetItemLocation(shopItemIdentity.identity.randomizerCheck)->GetPrice();
     }
 
     return shopItemIdentity;
@@ -1182,6 +1190,12 @@ extern "C" u16 Randomizer_Item_Give(PlayState* play, GetItemEntry giEntry) {
             Rupees_ChangeBy(1);
         }
 
+        return Return_Item_Entry(giEntry, RG_NONE);
+    }
+
+    // If it's an archipelago item, don't give anything
+    if (item == RG_ARCHIPELAGO_ITEM_USEFUL || item == RG_ARCHIPELAGO_ITEM_JUNK ||
+        item == RG_ARCHIPELAGO_ITEM_PROGRESSION) {
         return Return_Item_Entry(giEntry, RG_NONE);
     }
 
