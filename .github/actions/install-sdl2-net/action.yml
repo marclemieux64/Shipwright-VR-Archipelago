@@ -12,5 +12,5 @@ runs:
         fi
         cd deps/SDL2_net-2.2.0
         ./configure
-        make
+        make -j"$(nproc)"
         $SUDO make install
