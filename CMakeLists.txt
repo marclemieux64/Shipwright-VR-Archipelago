@@ -352,3 +352,5 @@ endif()
 
 set(CPACK_PROJECT_CONFIG_FILE ${CMAKE_SOURCE_DIR}/CMake/Packaging-2.cmake)
 include(CMake/Packaging.cmake)
+
+list(APPEND VCPKG_MANIFEST_FEATURES glm)
