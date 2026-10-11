@@ -134,6 +134,7 @@ source_group("include" FILES ${Header_Files__include})
 
 # soh (root)
 file(GLOB_RECURSE soh__ RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "soh/*.c" "soh/*.cpp" "soh/*.h" "soh/*.hpp")
+list(FILTER soh__ EXCLUDE REGEX "^soh/Network/Archipelago/apclientpp/")
 
 # Add specific files that don't match the pattern
 list(APPEND soh__ ${CMAKE_CURRENT_SOURCE_DIR}/soh/Enhancements/speechsynthesizer/DarwinSpeechSynthesizer.mm)

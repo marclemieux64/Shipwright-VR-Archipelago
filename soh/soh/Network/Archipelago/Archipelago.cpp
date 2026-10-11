@@ -5,6 +5,8 @@
 #endif
 
 #include "Archipelago.h"
+#include "soh/Enhancements/custom-message/CustomMessageTypes.h"
+#include "soh/cvar_prefixes.h"
 #include "soh/util.h"
 #include <apuuid.hpp>
 #include <apclient.hpp>
@@ -18,6 +20,8 @@
 #include "soh/Network/Archipelago/ArchipelagoConsoleWindow.h"
 #include "soh/Network/Archipelago/ArchipelagoHintWindow.h"
 #include "soh/Enhancements/randomizer/randomizerTypes.h"
+#include "soh/Enhancements/randomizer/randomizer.h"
+#include <fast/Fast3dGui.h>
 #include "soh/Enhancements/randomizer/static_data.h"
 #include "soh/Enhancements/randomizer/SeedContext.h"
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
@@ -495,11 +499,14 @@ void ArchipelagoClient::GameLoaded() {
     // Load textures for the archipelago items that're shown in the notifications
     static bool sArchipelagoTexturesLoaded = false;
     if (!sArchipelagoTexturesLoaded) {
-        Ship::Context::GetInstance()->GetWindow()->GetGui()->LoadTextureFromRawImage(
+        std::dynamic_pointer_cast<Fast::Fast3dGui>(
+    Ship::Context::GetRawInstance()->GetWindow()->GetGui())->LoadTextureFromRawImage(
             "Archipelago Progressive Icon", "textures/parameter_static/gArchipelagoProgressive.png");
-        Ship::Context::GetInstance()->GetWindow()->GetGui()->LoadTextureFromRawImage(
+        std::dynamic_pointer_cast<Fast::Fast3dGui>(
+    Ship::Context::GetRawInstance()->GetWindow()->GetGui())->LoadTextureFromRawImage(
             "Archipelago Useful Icon", "textures/parameter_static/gArchipelagoUseful.png");
-        Ship::Context::GetInstance()->GetWindow()->GetGui()->LoadTextureFromRawImage(
+        std::dynamic_pointer_cast<Fast::Fast3dGui>(
+    Ship::Context::GetRawInstance()->GetWindow()->GetGui())->LoadTextureFromRawImage(
             "Archipelago Junk Icon", "textures/parameter_static/gArchipelagoJunk.png");
 
         sArchipelagoTexturesLoaded = true;
@@ -806,7 +813,7 @@ std::string ArchipelagoClient::get_random_group_from_item(const std::string& ite
         }
     }
 
-    return RandomElement(containing_groups, false);
+    return ShipUtils::RandomElement(containing_groups, false);
 }
 
 std::string ArchipelagoClient::get_random_group_from_location(const std::string& item_name, const std::string& game) {
@@ -832,7 +839,7 @@ std::string ArchipelagoClient::get_random_group_from_location(const std::string&
         return "world";
     }
 
-    return RandomElement(containing_groups, false);
+    return ShipUtils::RandomElement(containing_groups, false);
 }
 
 std::string GetUtf8char(const std::string& string, size_t position) {
@@ -1460,7 +1467,7 @@ std::vector<RandomizerGet> archipelagoIceTrapModels = {
 };
 
 RandomizerGet ArchipelagoClient::GetIceTrapItem() {
-    return RandomElement(archipelagoIceTrapModels);
+    return ShipUtils::RandomElement(archipelagoIceTrapModels);
 }
 
 std::string ArchipelagoClient::GetApItemName(int64_t ApItemId) {

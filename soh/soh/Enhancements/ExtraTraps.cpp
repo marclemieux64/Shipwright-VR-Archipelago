@@ -178,7 +178,7 @@ void RegisterExtraTraps() {
             } else {
                 // Add complete randomness when in Archipelago because traplinked ice traps bypass
                 // GIs, and them being deterministic in Archipelago isn't really important.
-                RollRandomTrap(gPlayState->sceneNum + Random(0, 100));
+                RollRandomTrap(gPlayState->sceneNum + ShipUtils::Random(0, 100));
             }
         } else {
             GameInteractor::RawAction::FreezePlayer();

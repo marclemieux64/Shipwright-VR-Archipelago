@@ -527,7 +527,7 @@ void Context::ParseArchipelagoOptions() {
     nlohmann::json slotData = ArchipelagoClient::GetInstance().GetSlotData();
     mOptions[RSK_LOGIC_RULES].Set(slotData["no_logic"]);
     mOptions[RSK_FOREST].Set(slotData["closed_forest"]);
-    mOptions[RSK_KAK_GATE].Set(slotData["kakariko_gate"]);
+
     mOptions[RSK_DOOR_OF_TIME].Set(slotData["door_of_time"]);
     mOptions[RSK_ZORAS_FOUNTAIN].Set(slotData["zoras_fountain"]);
     mOptions[RSK_SLEEPING_WATERFALL].Set(slotData["sleeping_waterfall"]);
@@ -771,20 +771,20 @@ void Context::ParseArchipelagoOptions() {
     } else if (slotData["ganons_castle_boss_key"] == 1) {
         mOptions[RSK_GANONS_BOSS_KEY].Set(RO_GANON_BOSS_KEY_ANYWHERE);
     } else if (slotData["ganons_castle_boss_key"] == 2) {
-        mOptions[RSK_GANONS_BOSS_KEY].Set(RO_GANON_BOSS_KEY_LACS_VANILLA);
+        mOptions[RSK_GANONS_BOSS_KEY].Set(RO_GANON_BOSS_KEY_MEDALLIONS);
     } else if (slotData["ganons_castle_boss_key"] == 3) {
-        mOptions[RSK_GANONS_BOSS_KEY].Set(RO_GANON_BOSS_KEY_LACS_STONES);
+        mOptions[RSK_GANONS_BOSS_KEY].Set(RO_GANON_BOSS_KEY_STONES);
     } else if (slotData["ganons_castle_boss_key"] == 4) {
-        mOptions[RSK_GANONS_BOSS_KEY].Set(RO_GANON_BOSS_KEY_LACS_MEDALLIONS);
+        mOptions[RSK_GANONS_BOSS_KEY].Set(RO_GANON_BOSS_KEY_MEDALLIONS);
     } else if (slotData["ganons_castle_boss_key"] == 5) {
-        mOptions[RSK_GANONS_BOSS_KEY].Set(RO_GANON_BOSS_KEY_LACS_REWARDS);
+        mOptions[RSK_GANONS_BOSS_KEY].Set(RO_GANON_BOSS_KEY_REWARDS);
     } else if (slotData["ganons_castle_boss_key"] == 6) {
-        mOptions[RSK_GANONS_BOSS_KEY].Set(RO_GANON_BOSS_KEY_LACS_DUNGEONS);
+        mOptions[RSK_GANONS_BOSS_KEY].Set(RO_GANON_BOSS_KEY_DUNGEONS);
     } else if (slotData["ganons_castle_boss_key"] == 7) {
-        mOptions[RSK_GANONS_BOSS_KEY].Set(RO_GANON_BOSS_KEY_LACS_TOKENS);
+        mOptions[RSK_GANONS_BOSS_KEY].Set(RO_GANON_BOSS_KEY_TOKENS);
     }
     mOptions[RSK_SKIP_CHILD_STEALTH].Set(RO_GENERIC_NO);
-    mOptions[RSK_SKIP_CHILD_ZELDA].Set(slotData["skip_child_zelda"]);
+
     mOptions[RSK_STARTING_STICKS].Set(slotData["start_with_stick_ammo"]);
     mOptions[RSK_STARTING_NUTS].Set(slotData["start_with_nut_ammo"]);
     mOptions[RSK_STARTING_BEANS].Set(slotData["start_with_magic_beans"]);
@@ -837,12 +837,12 @@ void Context::ParseArchipelagoOptions() {
     mOptions[RSK_MQ_ICE_CAVERN].Set(0);
     mOptions[RSK_MQ_GTG].Set(0);
     mOptions[RSK_MQ_GANONS_CASTLE].Set(0);
-    mOptions[RSK_LACS_STONE_COUNT].Set(slotData["ganons_castle_boss_key_stones_required"]);
-    mOptions[RSK_LACS_MEDALLION_COUNT].Set(slotData["ganons_castle_boss_key_medallions_required"]);
-    mOptions[RSK_LACS_REWARD_COUNT].Set(slotData["ganons_castle_boss_key_dungeon_rewards_required"]);
-    mOptions[RSK_LACS_DUNGEON_COUNT].Set(slotData["ganons_castle_boss_key_dungeons_required"]);
-    mOptions[RSK_LACS_TOKEN_COUNT].Set(slotData["ganons_castle_boss_key_skull_tokens_required"]);
-    mOptions[RSK_LACS_OPTIONS].Set(slotData["ganons_castle_boss_key_greg_modifier"]);
+    mOptions[RSK_GBK_STONE_COUNT].Set(slotData["ganons_castle_boss_key_stones_required"]);
+    mOptions[RSK_GBK_MEDALLION_COUNT].Set(slotData["ganons_castle_boss_key_medallions_required"]);
+    mOptions[RSK_GBK_REWARD_COUNT].Set(slotData["ganons_castle_boss_key_dungeon_rewards_required"]);
+    mOptions[RSK_GBK_DUNGEON_COUNT].Set(slotData["ganons_castle_boss_key_dungeons_required"]);
+    mOptions[RSK_GBK_TOKEN_COUNT].Set(slotData["ganons_castle_boss_key_skull_tokens_required"]);
+    mOptions[RSK_GBK_OPTIONS].Set(slotData["ganons_castle_boss_key_greg_modifier"]);
     if (slotData["key_rings"] == 0) {
         mOptions[RSK_KEYRINGS].Set(RO_KEYRINGS_OFF);
     } else if (slotData["key_rings"] == 1) {
@@ -884,12 +884,18 @@ void Context::ParseArchipelagoOptions() {
     mOptions[RSK_ALL_LOCATIONS_REACHABLE].Set(0);
     mOptions[RSK_SHUFFLE_BOSS_ENTRANCES].Set(0);
     mOptions[RSK_SHUFFLE_100_GS_REWARD].Set(slotData["shuffle_100_gs_reward"]);
-    mOptions[RSK_TRIFORCE_HUNT].Set(slotData["triforce_hunt"]);
-    // For some reason, ship adds 1 after the option is parsed in normal rando, so we subtract 1 here.
-    uint8_t triforcePieceTotal = slotData["triforce_hunt_pieces_total"];
-    uint8_t triforcePieceRequired = slotData["triforce_hunt_pieces_required"];
-    mOptions[RSK_TRIFORCE_HUNT_PIECES_TOTAL].Set((triforcePieceTotal - 1));
-    mOptions[RSK_TRIFORCE_HUNT_PIECES_REQUIRED].Set((triforcePieceRequired - 1));
+
+    // Ship's option values are offset by 1 from Archipelago slot data.
+uint8_t triforcePieceTotal = slotData["triforce_hunt_pieces_total"];
+uint8_t triforcePieceRequired = slotData["triforce_hunt_pieces_required"];
+
+mOptions[RSK_TRIFORCE_HUNT_PIECES_TOTAL].Set(
+    slotData["triforce_hunt"] ? (triforcePieceTotal - 1) : 0);
+
+if (slotData["triforce_hunt"]) {
+    mOptions[RSK_WINCON].Set(RO_WINCON_TRIFORCE_PIECES);
+    mOptions[RSK_WINCON_TRIFORCE_COUNT].Set(triforcePieceRequired - 1);
+}
     mOptions[RSK_SHUFFLE_BEAN_SOULS].Set(RO_GENERIC_NO);
     mOptions[RSK_SHUFFLE_BOSS_SOULS].Set(slotData["shuffle_boss_souls"]);
     if (slotData["shuffle_fish"] == 0) {

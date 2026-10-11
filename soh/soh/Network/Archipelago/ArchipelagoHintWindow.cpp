@@ -1,4 +1,5 @@
 #include "ArchipelagoHintWindow.h"
+#include "soh/cvar_prefixes.h"
 
 #include "soh/SohGui/UIWidgets.hpp"
 #include "soh/SohGui/SohGui.hpp"
@@ -58,7 +59,7 @@ void ArchipelagoHintWindow::DrawElement() {
             ImGui::PushStyleColor(ImGuiCol_Header, AP_Text::colorVec[getStatusColor(tag)]);
             if (ImGui::Selectable(AP_Hint::statusStrings[tag].c_str(), selected)) {
                 CVarSetInteger(cvar, selected ? 0 : 1);
-                Ship::Context::GetInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+                Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
                 ShipInit::Init(cvar);
             }
             ImGui::PopStyleColor(2);

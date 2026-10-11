@@ -1,4 +1,5 @@
 #include "ArchipelagoSettingsWindow.h"
+#include "soh/cvar_prefixes.h"
 #include "Archipelago.h"
 
 #include "soh/SohGui/UIWidgets.hpp"
