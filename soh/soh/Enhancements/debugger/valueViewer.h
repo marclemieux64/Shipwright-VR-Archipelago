@@ -3,6 +3,7 @@
 #ifdef __cplusplus
 
 #include <nlohmann/json.hpp>
+#include <imgui.h>
 #include <ship/window/gui/GuiWindow.h>
 
 typedef enum {
