@@ -10,16 +10,20 @@ concurrency:
 
 jobs:
   build-windows:
+    name: Build Windows (MSVC + Ninja)
     runs-on: windows-latest
     steps:
       - name: Install dependencies
+        shell: powershell
         run: |
           choco install ninja -y
           Remove-Item -Path "C:\ProgramData\Chocolatey\bin\ccache.exe" -Force -ErrorAction SilentlyContinue
+
       - name: Git Checkout
         uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: recursive
+
       - name: Configure sccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
@@ -31,6 +35,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-ccache-${{ github.ref }}
             ${{ runner.os }}-ccache
+
       - name: Restore Cached VCPKG folder
         id: restore-cache-vcpkg
         uses: actions/cache/restore@v4
@@ -40,40 +45,64 @@ jobs:
             ${{ runner.os }}-vcpkg-${{ github.ref }}-
             ${{ runner.os }}-vcpkg-
           path: vcpkg
+
       - name: Configure Developer Command Prompt
         uses: ilammy/msvc-dev-cmd@v1
+
       - name: Build SoH
+        shell: powershell
         env:
-          VCPKG_ROOT: ${{github.workspace}}/vcpkg
+          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
         run: |
-          set $env:PATH="$env:USERPROFILE/.cargo/bin;$env:PATH"
+          $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
+          
+          # 1. Configure CMake project
           cmake -S . -B build-windows -G Ninja -DCMAKE_MAKE_PROGRAM=ninja -DCMAKE_BUILD_TYPE:STRING=Release -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DBUILD_REMOTE_CONTROL=1
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
-          # Generate soh.o2r on this runner, then place it where the install step expects it
+          # 2. Build target asset generator (OTR / O2R)
           cmake --build build-windows --config Release --target GenerateSohOtr
           if ($LASTEXITCODE -ne 0) { exit 1 }
+
           New-Item -ItemType Directory -Force -Path build-windows/soh | Out-Null
-          if (Test-Path soh.o2r) {
-            Copy-Item soh.o2r build-windows/soh/soh.o2r -Force
-          } else {
-            Get-ChildItem -Recurse -Filter soh.o2r -File | Select-Object -ExpandProperty FullName
-            throw "soh.o2r was not generated at the repo root"
+
+          # Copy generated OTR/O2R asset files into target directory
+          if (Test-Path "soh.otr") {
+              Copy-Item "soh.otr" "build-windows/soh/soh.otr" -Force
+          } elseif (Test-Path "soh.o2r") {
+              Copy-Item "soh.o2r" "build-windows/soh/soh.o2r" -Force
           }
 
+          # 3. Compile full application
           cmake --build build-windows --config Release --parallel 10
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
-          (cd build-windows && cpack)
-          cd ..
-          mv _packages/*.zip _packages/soh-windows.zip
+          # 4. Package binaries
+          Set-Location build-windows
+          cpack
+          Set-Location ..
+
+          New-Item -ItemType Directory -Force -Path _packages | Out-Null
+          if (Test-Path "_packages/*.zip") {
+              Move-Item -Path "_packages/*.zip" -Destination "_packages/soh-windows.zip" -Force
+          }
+
       - name: Unzip package
-        run: Expand-Archive -Path _packages/soh-windows.zip -DestinationPath soh-windows
+        shell: powershell
+        run: |
+          if (Test-Path "_packages/soh-windows.zip") {
+              Expand-Archive -Path "_packages/soh-windows.zip" -DestinationPath soh-windows -Force
+          } else {
+              Write-Error "Package _packages/soh-windows.zip was not found!"
+              exit 1
+          }
+
       - name: Upload build
         uses: actions/upload-artifact@v4
         with:
           name: soh-windows
           path: soh-windows
+
       - name: Save Cache VCPKG folder
         if: ${{ github.ref_name == github.event.repository.default_branch }}
         uses: actions/cache/save@v4
