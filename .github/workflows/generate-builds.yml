@@ -9,9 +9,42 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  generate-soh-o2r:
+    name: Generate shared O2R assets
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          xargs -a .github/workflows/apt-deps.txt sudo apt-get install -y
+          sudo apt-get install -y libzip-dev zipcmp zipmerge ziptool ninja-build
+
+      - name: Configure CMake
+        run: cmake -S . -B build-cmake -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Generate O2R asset
+        run: cmake --build build-cmake --target GenerateSohOtr --parallel 3
+
+      - name: Verify generated asset
+        run: test -f soh/soh.o2r
+
+      - name: Upload O2R asset
+        uses: actions/upload-artifact@v4
+        with:
+          name: soh-o2r
+          path: soh/soh.o2r
+          if-no-files-found: error
+
   build-windows:
     name: Build Windows (MSVC + Ninja)
     runs-on: windows-latest
+    needs: generate-soh-o2r
     steps:
       - name: Install dependencies
         shell: powershell
@@ -24,6 +57,12 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 0
+
+      - name: Download O2R asset
+        uses: actions/download-artifact@v4
+        with:
+          name: soh-o2r
+          path: soh
 
       - name: Configure sccache
         uses: hendrikmuhs/ccache-action@v1.2
@@ -61,24 +100,11 @@ jobs:
           cmake -S . -B build-windows -G Ninja -DCMAKE_MAKE_PROGRAM=ninja -DCMAKE_BUILD_TYPE:STRING=Release -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DBUILD_REMOTE_CONTROL=1
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
-          # 2. Build target asset generator (OTR / O2R)
-          cmake --build build-windows --config Release --target GenerateSohOtr
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-
-          New-Item -ItemType Directory -Force -Path build-windows/soh | Out-Null
-
-          # Copy generated OTR/O2R asset files into target directory
-          if (Test-Path "soh.otr") {
-              Copy-Item "soh.otr" "build-windows/soh/soh.otr" -Force
-          } elseif (Test-Path "soh.o2r") {
-              Copy-Item "soh.o2r" "build-windows/soh/soh.o2r" -Force
-          }
-
-          # 3. Compile full application
+          # 2. Compile full application
           cmake --build build-windows --config Release --parallel 10
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
-          # 4. Package binaries
+          # 3. Package binaries
           Set-Location build-windows
           cpack
           Set-Location ..
