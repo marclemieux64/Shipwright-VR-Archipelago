@@ -2412,7 +2412,7 @@ const std::vector<uint8_t>& GetDungeonSmallKeyDoors(SceneID sceneId) {
 
     // Load the scene
     std::shared_ptr<SOH::Scene> scene = std::dynamic_pointer_cast<SOH::Scene>(
-        Ship::Context::GetInstance()->GetResourceManager()->LoadResource(scenePath));
+        Ship::Context::GetRawInstance()->GetResourceManager()->LoadResource(scenePath));
     if (scene == nullptr) {
         return emptyVector;
     }

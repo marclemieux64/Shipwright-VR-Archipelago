@@ -295,22 +295,24 @@ include(FetchContent)
 ################################################################################
 add_compile_definitions(ASIO_STANDALONE)
 
-if(BUILD_REMOTE_CONTROL)
-    FetchContent_Declare(
-        valijson
-        GIT_REPOSITORY https://github.com/tristanpenman/valijson.git
-        GIT_TAG v1.0.6
-    )
-    FetchContent_MakeAvailable(valijson)
-    target_include_directories(${PROJECT_NAME} PRIVATE ${valijson_SOURCE_DIR}/include)
-
-    FetchContent_Declare(
+FetchContent_Declare(
             asio
             GIT_REPOSITORY https://github.com/chriskohlhoff/asio.git
             GIT_TAG asio-1-30-2
     )
     FetchContent_MakeAvailable(asio)
     target_include_directories(${PROJECT_NAME} PRIVATE ${asio_SOURCE_DIR}/asio/include)
+
+FetchContent_Declare(
+    valijson
+    GIT_REPOSITORY https://github.com/tristanpenman/valijson.git
+    GIT_TAG v1.0.6
+)
+FetchContent_MakeAvailable(valijson)
+target_include_directories(${PROJECT_NAME} PRIVATE ${valijson_SOURCE_DIR}/include)
+
+if(BUILD_REMOTE_CONTROL)
+
 
     # websocketpp has been temporarily removed from vcpkg, see
     # https://github.com/microsoft/vcpkg/pull/42678#issuecomment-2914451436
@@ -322,6 +324,9 @@ if(BUILD_REMOTE_CONTROL)
     FetchContent_Populate(websocketpp)
     target_include_directories(${PROJECT_NAME} PRIVATE ${websocketpp_SOURCE_DIR})
 
+
+endif()
+
     FetchContent_Declare(
             wswrap
             GIT_REPOSITORY https://github.com/black-sliver/wswrap.git
@@ -330,7 +335,7 @@ if(BUILD_REMOTE_CONTROL)
     FetchContent_MakeAvailable(wswrap)
     target_include_directories(${PROJECT_NAME} PRIVATE ${wswrap_SOURCE_DIR}/include)
 
-    FetchContent_Declare(
+FetchContent_Declare(
             apclientpp
             GIT_REPOSITORY https://github.com/black-sliver/apclientpp.git
             GIT_TAG 7f33a3849887983378258c2fe8fc3887f687c430
@@ -338,7 +343,6 @@ if(BUILD_REMOTE_CONTROL)
     SET(APCLIENTPP_BUILD_TESTING OFF CACHE BOOL "Don't build apclientpp's tests")
     FetchContent_MakeAvailable(apclientpp)
     target_include_directories(${PROJECT_NAME} PRIVATE ${apclientpp_SOURCE_DIR})
-endif()
 
 # Find/download Dr Libs (For custom audio)
 ################################################################################
@@ -735,7 +739,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
             "SDL2::SDL2;"
             "SDL2::SDL2main;"
             "$<$<BOOL:${BUILD_REMOTE_CONTROL}>:SDL2_net::SDL2_net-static>"
-            "$<$<BOOL:${BUILD_REMOTE_CONTROL}>:OpenSSL::SSL>"
+            OpenSSL::SSL
             "$<$<BOOL:${BUILD_REMOTE_CONTROL}>:OpenSSL::Crypto>"
             "glfw;"
             "winmm;"
@@ -767,6 +771,7 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
     find_package(SDL2)
     set(THREADS_PREFER_PTHREAD_FLAG ON)
     find_package(Threads REQUIRED)
+find_package(OpenSSL REQUIRED)
     set(ADDITIONAL_LIBRARY_DEPENDENCIES
         "libultraship;"
         SDL2::SDL2
@@ -788,6 +793,7 @@ else()
     find_package(SDL2)
     set(THREADS_PREFER_PTHREAD_FLAG ON)
     find_package(Threads REQUIRED)
+find_package(OpenSSL REQUIRED)
     find_package(Ogg REQUIRED)
     find_package(Vorbis REQUIRED)
     find_package(Opus REQUIRED)
@@ -803,8 +809,8 @@ else()
         "Opus::opus"
         "Opusfile::Opusfile"
         "$<$<BOOL:${BUILD_REMOTE_CONTROL}>:SDL2_net::SDL2_net>"
-        "$<$<BOOL:${BUILD_REMOTE_CONTROL}>:OpenSSL::SSL>"
-        "$<$<BOOL:${BUILD_REMOTE_CONTROL}>:OpenSSL::Crypto>"
+        OpenSSL::SSL
+        OpenSSL::Crypto
         ${CMAKE_DL_LIBS}
         Threads::Threads
     )

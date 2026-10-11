@@ -1,3 +1,4 @@
+#include <fast/Fast3dGui.h>
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -495,11 +496,11 @@ void ArchipelagoClient::GameLoaded() {
     // Load textures for the archipelago items that're shown in the notifications
     static bool sArchipelagoTexturesLoaded = false;
     if (!sArchipelagoTexturesLoaded) {
-        Ship::Context::GetInstance()->GetWindow()->GetGui()->LoadTextureFromRawImage(
+        std::static_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui())->LoadTextureFromRawImage(
             "Archipelago Progressive Icon", "textures/parameter_static/gArchipelagoProgressive.png");
-        Ship::Context::GetInstance()->GetWindow()->GetGui()->LoadTextureFromRawImage(
+        std::static_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui())->LoadTextureFromRawImage(
             "Archipelago Useful Icon", "textures/parameter_static/gArchipelagoUseful.png");
-        Ship::Context::GetInstance()->GetWindow()->GetGui()->LoadTextureFromRawImage(
+        std::static_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui())->LoadTextureFromRawImage(
             "Archipelago Junk Icon", "textures/parameter_static/gArchipelagoJunk.png");
 
         sArchipelagoTexturesLoaded = true;
