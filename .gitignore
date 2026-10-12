@@ -468,3 +468,4 @@ soh/properties.h
 deps/ 
 vcpkg/ 
 *.tar.gz* 
+cmake-3.30.3-linux-x86_64/ 
