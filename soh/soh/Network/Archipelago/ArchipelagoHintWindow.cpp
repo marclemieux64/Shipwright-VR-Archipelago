@@ -23,8 +23,8 @@ void ArchipelagoHintWindow::DrawElement() {
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 1.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 0.0f);
 
-    UIWidgets::ButtonOptions sendButtonOptions = UIWidgets::ButtonOptions().Color(THEME_COLOR).Size(ImVec2(0.0, 0.0));
-    int hintInputHeight = ImGui::GetTextLineHeightWithSpacing() * 2;
+    UIWidgets::ButtonOptions sendButtonOptions = UIWidgets::ButtonOptions().Color(THEME_COLOR).Size(ImVec2(0.0f, 0.0f));
+    int hintInputHeight = static_cast<int>(ImGui::GetTextLineHeightWithSpacing() * 2.0f);
 
     static ImGuiTableFlags flags = ImGuiTableFlags_Resizable | ImGuiTableFlags_Sortable | ImGuiTableFlags_SortMulti |
                                    ImGuiTableFlags_SortTristate | ImGuiTableFlags_RowBg |
@@ -46,13 +46,13 @@ void ArchipelagoHintWindow::DrawElement() {
         ImGui::TableNextColumn();
         ImGui::Text("Status Filter ");
 
-        ImGui::PushStyleVar(ImGuiStyleVar_SelectableTextAlign, { 0.5, 0.5 });
+        ImGui::PushStyleVar(ImGuiStyleVar_SelectableTextAlign, ImVec2(0.5f, 0.5f));
         for (auto [tag, cvar] : showTag) {
             ImGui::TableNextColumn();
             // todo, maybe create this as an element in UIWidgets
             bool selected = CVarGetInteger(cvar, 1) == 1;
             if (selected) {
-                ImGui::PushStyleColor(ImGuiCol_Text, { 0.0f, 0.0f, 0.0f, 1.0f });
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 0.0f, 0.0f, 1.0f));
             } else {
                 ImGui::PushStyleColor(ImGuiCol_Text, AP_Text::colorVec[getStatusColor(tag)]);
             }
@@ -70,7 +70,7 @@ void ArchipelagoHintWindow::DrawElement() {
     }
 
     if (ImGui::BeginTable("archipelago_hint_table", 5, flags,
-                          ImVec2(0.0f, isWindowOpen ? -hintInputHeight - 15.0f : 300.0f))) {
+                          ImVec2(0.0f, isWindowOpen ? static_cast<float>(-hintInputHeight) - 15.0f : 300.0f))) {
         // headers
         ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableSetupColumn("Receiving Player", 0, 0.0f, HintTableColumns::COL_RECEIVING);
@@ -105,20 +105,20 @@ void ArchipelagoHintWindow::DrawElement() {
     // Ideally I don't want this to be a text field that shows a child window instead of a combo box,
     // https://github.com/ocornut/imgui/issues/718 has some more exotic methods of achieving this
     // But something like this might be slated for a future version of ImGui and this is good enough for now
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.0, 0.0, 0.0, 0.0));
-    ImGui::BeginChild("HintBoxLeft", ImVec2(-hintInputHeight * 3.5, isWindowOpen ? 0.0f : 50.0f));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+    ImGui::BeginChild("HintBoxLeft", ImVec2(static_cast<float>(-hintInputHeight) * 3.5f, isWindowOpen ? 0.0f : 50.0f));
     ImGui::PopStyleColor();
 
-    int chatbarHeight = ImGui::GetTextLineHeight() + ImGui::GetStyle().ItemSpacing.x + sendButtonOptions.padding.y +
-                        5.0f * 2.0f; // FrameBorderSize * 2
-    float chatBarPadding = (ImGui::GetWindowHeight() - chatbarHeight) / 2.0f;
+    int chatbarHeight = static_cast<int>(ImGui::GetTextLineHeight() + ImGui::GetStyle().ItemSpacing.x + sendButtonOptions.padding.y +
+                          5.0f * 2.0f); // FrameBorderSize * 2
+    float chatBarPadding = (ImGui::GetWindowHeight() - static_cast<float>(chatbarHeight)) / 2.0f;
     if (chatBarPadding > 0.0f) {
         ImGui::Dummy(ImVec2(0.0f, chatBarPadding));
     }
 
     PushStyleInput(THEME_COLOR);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10.0f, 8.0f));
-    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 3.0);
+    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 3.0f);
     if (ImGui::BeginCombo("##HintCombo", "New Hint", 0)) {
         if (ImGui::IsWindowAppearing()) {
             ImGui::SetKeyboardFocusHere();
@@ -129,12 +129,12 @@ void ArchipelagoHintWindow::DrawElement() {
         auto hintView = std::string_view(textEntryBuf);
         const std::unordered_set<int64_t> suggestions = suggestionTrie.GetSuggestions(hintView);
         std::vector<std::string> SuggestedItems;
-        for (int ApItemId : suggestions) {
-            SuggestedItems.emplace_back(ArchipelagoClient::GetInstance().GetApItemName(ApItemId));
+        for (int64_t ApItemId : suggestions) {
+            SuggestedItems.emplace_back(ArchipelagoClient::GetInstance().GetApItemName(static_cast<int>(ApItemId)));
         }
         std::sort(SuggestedItems.begin(), SuggestedItems.end());
 
-        for (int i = 0; i < SuggestedItems.size(); i++) {
+        for (int i = 0; i < static_cast<int>(SuggestedItems.size()); i++) {
             ImGui::PushID(i);
             std::string SuggestedItem = SuggestedItems[i];
             if (ImGui::Selectable(SuggestedItem.c_str())) {
@@ -239,16 +239,16 @@ void ArchipelagoHintWindow::addStatus(const AP_Hint::Hint& hint) {
 
 void ArchipelagoHintWindow::addStatusCombo(const AP_Hint::Hint& hint) {
     const std::array<AP_Hint::HintStatus, 3> drop_down_statuses = { AP_Hint::HintStatus::HINT_AVOID,
-                                                                    AP_Hint::HintStatus::HINT_NO_PRIORITY,
-                                                                    AP_Hint::HintStatus::HINT_PRIORITY };
+                                                                   AP_Hint::HintStatus::HINT_NO_PRIORITY,
+                                                                   AP_Hint::HintStatus::HINT_PRIORITY };
 
     // set up combo box style
-    ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0, 0.0, 0.0, 0.0));
-    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(1.0, 1.0, 1.0, 0.1));
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0, 0.0, 0.0, 0.0));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1.0, 1.0, 1.0, 0.1));
-    ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(1.0, 1.0, 1.0, 0.1));
-    ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(1.0, 1.0, 1.0, 0.2));
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(1.0f, 1.0f, 1.0f, 0.1f));
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1.0f, 1.0f, 1.0f, 0.1f));
+    ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(1.0f, 1.0f, 1.0f, 0.1f));
+    ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(1.0f, 1.0f, 1.0f, 0.2f));
 
     if (ImGui::BeginCombo("", AP_Hint::statusStrings[hint.hint_status].c_str(), 0)) {
         for (const AP_Hint::HintStatus status : drop_down_statuses) {
@@ -256,7 +256,11 @@ void ArchipelagoHintWindow::addStatusCombo(const AP_Hint::Hint& hint) {
             const bool is_selected = hint.hint_status == status;
             if (ImGui::Selectable(AP_Hint::statusStrings[status].c_str(), is_selected)) {
                 // update hint status
-                ArchipelagoClient::GetInstance().UpdateHintStatus(hint.finding_player_id, hint.location_id, status);
+                ArchipelagoClient::GetInstance().UpdateHintStatus(
+                    static_cast<int>(hint.finding_player_id), 
+                    static_cast<int>(hint.location_id), 
+                    status
+                );
             }
 
             if (is_selected)
@@ -269,6 +273,7 @@ void ArchipelagoHintWindow::addStatusCombo(const AP_Hint::Hint& hint) {
     }
     ImGui::PopStyleColor(6);
 }
+
 
 AP_Text::TextColor ArchipelagoHintWindow::getStatusColor(const AP_Hint::HintStatus status) const {
     switch (status) {
@@ -363,8 +368,8 @@ void ArchipelagoHintWindow_UpdateHints(std::vector<AP_Hint::Hint>& new_hints) {
 void ArchipelagoHintWindow_ChangeHintableItems(const std::vector<int64_t>& hintableItems) {
     suggestionTrie.Clear();
     for (const int64_t itemId : hintableItems) {
-        std::string ItemName = ArchipelagoClient::GetInstance().GetApItemName(itemId);
-        suggestionTrie.AddItem(ItemName, itemId);
+        std::string ItemName = ArchipelagoClient::GetInstance().GetApItemName(static_cast<int>(itemId));
+        suggestionTrie.AddItem(ItemName, static_cast<int>(itemId));
     }
 }
 

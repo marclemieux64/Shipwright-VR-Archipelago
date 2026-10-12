@@ -1136,7 +1136,6 @@ void RandomizerOnVanillaBehaviorHandler(GIVanillaBehavior id, bool* should, va_l
     va_list args;
     va_copy(args, originalArgs);
 
-    u8 test;
 
     switch (id) {
         case VB_CLIMB:
