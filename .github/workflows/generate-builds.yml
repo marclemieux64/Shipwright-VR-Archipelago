@@ -17,11 +17,15 @@ jobs:
     - name: Configure ccache
       uses: hendrikmuhs/ccache-action@v1.2.23
       with:
-        save: ${{ github.ref_name == github.event.repository.default_branch }}
-        key: ${{ runner.os }}-otr-ccache-${{ github.ref }}-${{ github.sha }}
-        restore-keys: |
-          ${{ runner.os }}-otr-ccache-${{ github.ref }}
-          ${{ runner.os }}-otr-ccache
+        update-package-index: true
+        key: ${{ runner.os }}-otr-ccache
+    - name: Install Modern CMake
+      run: |
+        wget https://github.com/Kitware/CMake/releases/download/v3.30.3/cmake-3.30.3-linux-x86_64.tar.gz
+        tar -xzf cmake-3.30.3-linux-x86_64.tar.gz
+        sudo cp -r cmake-3.30.3-linux-x86_64/bin/* /usr/local/bin/
+        sudo cp -r cmake-3.30.3-linux-x86_64/share/* /usr/local/share/
+        cmake --version
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -62,6 +66,7 @@ jobs:
         cmake --build build-cmake --config Release --target GenerateSohOtr -j3
     - name: Upload soh.o2r
       uses: actions/upload-artifact@v7
+      if: env.ACT != 'true'
       with:
         name: soh.o2r
         path: soh.o2r
@@ -133,7 +138,6 @@ jobs:
         make
         sudo make install
         sudo cp -av /usr/local/lib/libzip* /lib/x86_64-linux-gnu/
-    # this is available in 24.04 but not in 22.04, manually install it
     - name: Install valijson
       run: |
         export PATH="/usr/lib/ccache:/usr/local/opt/ccache/libexec:$PATH"
@@ -146,16 +150,20 @@ jobs:
         cd build
         cmake ..
         sudo cmake --install .
-    # websocketpp has a known issue when using older versions of gcc and cpp 20
-    # https://github.com/zaphoyd/websocketpp/issues/991
-    # we can patch it here to work with the old version until we update the runner
-    # to a version of ubuntu that has newer versions of gcc
     - name: Patch websocketpp
       run: |
         sudo sed -i 's/endpoint<connection,config>(/endpoint(/g' /usr/include/websocketpp/endpoint.hpp
         sudo sed -i 's/basic<concurrency,names>(/basic(/g' /usr/include/websocketpp/logger/basic.hpp
         sudo sed -i 's/server<config>(/server(/g' /usr/include/websocketpp/roles/server_endpoint.hpp
-    - name: Download soh.o2r
+    - name: Copy local soh.o2r if present
+      shell: bash
+      run: |
+        mkdir -p build-cmake/soh
+        if [ -f "soh.o2r" ]; then
+          cp soh.o2r build-cmake/soh/soh.o2r
+        fi
+    - name: Download soh.o2r artifact
+      if: env.ACT != 'true'
       uses: actions/download-artifact@v8
       with:
         name: soh.o2r
@@ -173,6 +181,7 @@ jobs:
         CXX: g++-12
     - name: Upload build
       uses: actions/upload-artifact@v7
+      if: env.ACT != 'true'
       with:
         name: soh-linux
         path: |
@@ -219,7 +228,15 @@ jobs:
         path: vcpkg
     - name: Configure Developer Command Prompt
       uses: ilammy/msvc-dev-cmd@v1
-    - name: Download soh.o2r
+    - name: Copy local soh.o2r if present
+      shell: bash
+      run: |
+        mkdir -p build-windows/soh
+        if [ -f "soh.o2r" ]; then
+          cp soh.o2r build-windows/soh/soh.o2r
+        fi
+    - name: Download soh.o2r artifact
+      if: env.ACT != 'true'
       uses: actions/download-artifact@v8
       with:
         name: soh.o2r
@@ -239,6 +256,7 @@ jobs:
       run: Expand-Archive -Path _packages/soh-windows.zip -DestinationPath soh-windows
     - name: Upload build
       uses: actions/upload-artifact@v7
+      if: env.ACT != 'true'
       with:
         name: soh-windows
         path: soh-windows
@@ -277,7 +295,16 @@ jobs:
             "ndk;27.1.12297006" \
             "cmake;3.31.6"
 
-      - name: Download soh.o2r
+      - name: Copy local soh.o2r if present
+        shell: bash
+        run: |
+          mkdir -p build-android/soh
+          if [ -f "soh.o2r" ]; then
+            cp soh.o2r build-android/soh/soh.o2r
+          fi
+
+      - name: Download soh.o2r artifact
+        if: env.ACT != 'true'
         uses: actions/download-artifact@v8
         with:
           name: soh.o2r
@@ -291,6 +318,7 @@ jobs:
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v7
+        if: env.ACT != 'true'
         with:
           name: soh-android-quest
           path: Android/app/build/outputs/apk/release/app-release.apk

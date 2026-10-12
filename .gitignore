@@ -464,3 +464,7 @@ soh/properties.h
 
 # Claude working docs (design notes, plans)
 /markdowns/
+.ccache/ 
+deps/ 
+vcpkg/ 
+*.tar.gz* 
