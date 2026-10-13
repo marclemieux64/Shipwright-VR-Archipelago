@@ -7,11 +7,18 @@
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/Enhancements/savestate_serialize.h"
+<<<<<<< HEAD
 #include "soh/Enhancements/vr-combat/VrCombat.h" // SOH [VR]
 
 #include <string.h>
 
 // SOH [VR] sys_math3d.c, not in functions.h. Used to test Twinrova's beam against the shield quad.
+=======
+#include "soh/Enhancements/vr-combat/VrCombat.h"
+
+#include <string.h>
+
+>>>>>>> pr-68
 s32 Math3D_TriLineIntersect(Vec3f* v0, Vec3f* v1, Vec3f* v2, f32 nx, f32 ny, f32 nz, f32 originDist,
                             Vec3f* linePointA, Vec3f* linePointB, Vec3f* intersect, s32 fromFront);
 
@@ -811,6 +818,49 @@ s32 BossTw_BeamHitPlayerCheck(BossTw* this, PlayState* play) {
     return false;
 }
 
+static s32 BossTw_VrBeamHitsShield(BossTw* this, Player* player) {
+    Vec3f beamEnd;
+    Vec3f beamLocal;
+    Vec3f hitPos;
+    Vec3f offset;
+    TriNorm shieldTri;
+    Vec3f* quad = player->shieldQuad.dim.quad;
+
+    if (!VrCombat_ShieldHeld(player) || this->beamDist <= 0.0f) {
+        return false;
+    }
+
+    // SOH [VR] Twinrova's phase-1 beam does not use the normal collision system.
+    // Build its current world-space line segment and test it against the same two
+    // triangles that the collision system uses for Link's physical shield quad.
+    Matrix_Translate(this->beamOrigin.x, this->beamOrigin.y, this->beamOrigin.z, MTXMODE_NEW);
+    Matrix_RotateY(this->beamYaw, MTXMODE_APPLY);
+    Matrix_RotateX(this->beamPitch, MTXMODE_APPLY);
+
+    beamLocal.x = 0.0f;
+    beamLocal.y = 0.0f;
+    beamLocal.z = this->beamDist;
+    Matrix_MultVec3f(&beamLocal, &beamEnd);
+
+    Math3D_TriNorm(&shieldTri, &quad[2], &quad[3], &quad[1]);
+    if (!Math3D_TriLineIntersect(&shieldTri.vtx[0], &shieldTri.vtx[1], &shieldTri.vtx[2],
+                                 shieldTri.plane.normal.x, shieldTri.plane.normal.y, shieldTri.plane.normal.z,
+                                 shieldTri.plane.originDist, &this->beamOrigin, &beamEnd, &hitPos, false)) {
+        Math3D_TriNorm(&shieldTri, &quad[1], &quad[0], &quad[2]);
+        if (!Math3D_TriLineIntersect(&shieldTri.vtx[0], &shieldTri.vtx[1], &shieldTri.vtx[2],
+                                     shieldTri.plane.normal.x, shieldTri.plane.normal.y, shieldTri.plane.normal.z,
+                                     shieldTri.plane.originDist, &this->beamOrigin, &beamEnd, &hitPos, false)) {
+            return false;
+        }
+    }
+
+    offset.x = hitPos.x - this->beamOrigin.x;
+    offset.y = hitPos.y - this->beamOrigin.y;
+    offset.z = hitPos.z - this->beamOrigin.z;
+    this->beamDist = sqrtf(SQ(offset.x) + SQ(offset.y) + SQ(offset.z));
+    return true;
+}
+
 /**
  * SOH [VR] Physical shield (markdowns/TWINROVA-VANILLA.md). The vanilla phase-1 reflection is
  * gated on the R stance (PLAYER_STATE1_SHIELDING + Link facing her), which the controller-held
@@ -902,6 +952,7 @@ s32 BossTw_CheckBeamReflection(BossTw* this, PlayState* play) {
     Vec3f vec;
     Player* player = GET_PLAYER(play);
 
+<<<<<<< HEAD
     // SOH [VR] Physical shield: the shield in the beam replaces the stance + facing gate and the
     // window around Link's feet. Outcomes are vanilla's: the mirror shield reflects; any other
     // shield diverts for 11 ticks, then the beam goes through (beamDist untouched) and hits Link.
@@ -909,11 +960,21 @@ s32 BossTw_CheckBeamReflection(BossTw* this, PlayState* play) {
         f32 hitDist;
 
         if (!BossTw_VrBeamCaughtByShield(this, player, &hitDist)) {
+=======
+    // SOH [VR] Physical combat has no R-button shield stance. Twinrova phase 1
+    // normally checks an imaginary point in front of Link, so use the actual
+    // controller-driven shield quad instead. Keep the vanilla path unchanged.
+    if (VrCombat_ShieldHeld(player)) {
+        if (!BossTw_VrBeamHitsShield(this, player)) {
+>>>>>>> pr-68
             return 0;
         }
 
         if (Player_HasMirrorShieldEquipped(play)) {
+<<<<<<< HEAD
             this->beamDist = hitDist;
+=======
+>>>>>>> pr-68
             return 1;
         }
 
@@ -929,7 +990,10 @@ s32 BossTw_CheckBeamReflection(BossTw* this, PlayState* play) {
         }
 
         sBeamDivertTimer++;
+<<<<<<< HEAD
         this->beamDist = hitDist;
+=======
+>>>>>>> pr-68
         return 2;
     }
 
@@ -1056,6 +1120,14 @@ f32 BossTw_GetFloorY(Vec3f* pos) {
     return -100.0f;
 }
 
+static void BossTw_GetVrShieldCenter(Player* player, Vec3f* center) {
+    Vec3f* quad = player->shieldQuad.dim.quad;
+
+    center->x = (quad[0].x + quad[1].x + quad[2].x + quad[3].x) * 0.25f;
+    center->y = (quad[0].y + quad[1].y + quad[2].y + quad[3].y) * 0.25f;
+    center->z = (quad[0].z + quad[1].z + quad[2].z + quad[3].z) * 0.25f;
+}
+
 void BossTw_ShootBeam(BossTw* this, PlayState* play) {
     s16 i;
     f32 xDiff;
@@ -1075,18 +1147,32 @@ void BossTw_ShootBeam(BossTw* this, PlayState* play) {
 
     if (this->timers[1] != 0) {
         Math_ApproachS(&this->actor.shape.rot.y, this->actor.yawTowardsPlayer, 5, this->rotateSpeed);
+<<<<<<< HEAD
         // SOH [VR] Physical shield presented toward her = vanilla's "shielding and facing her":
         // she aims at the shield. Otherwise the vanilla branches below (no stance -> his body).
         if (VrCombat_ShieldHeld(player) && BossTw_VrShieldPresented(player, &this->beamOrigin)) {
             Vec3f shieldCenter;
 
             BossTw_VrShieldCenter(player, &shieldCenter);
+=======
+        if (VrCombat_ShieldHeld(player)) {
+            Vec3f shieldCenter;
+
+            // SOH [VR] Match Twinrova's vanilla intent of aiming at Link's shield,
+            // but use the actual controller-driven physical shield position.
+            BossTw_GetVrShieldCenter(player, &shieldCenter);
+>>>>>>> pr-68
             Math_ApproachF(&this->targetPos.x, shieldCenter.x, 1.0f, 400.0f);
             Math_ApproachF(&this->targetPos.y, shieldCenter.y, 1.0f, 400.0f);
             Math_ApproachF(&this->targetPos.z, shieldCenter.z, 1.0f, 400.0f);
         } else if ((player->stateFlags1 & PLAYER_STATE1_SHIELDING) &&
+<<<<<<< HEAD
             ((s16)((player->actor.shape.rot.y - this->actor.shape.rot.y) + 0x8000) < 0x2000) &&
             ((s16)((player->actor.shape.rot.y - this->actor.shape.rot.y) + 0x8000) > -0x2000)) {
+=======
+                   ((s16)((player->actor.shape.rot.y - this->actor.shape.rot.y) + 0x8000) < 0x2000) &&
+                   ((s16)((player->actor.shape.rot.y - this->actor.shape.rot.y) + 0x8000) > -0x2000)) {
+>>>>>>> pr-68
             Math_ApproachF(&this->targetPos.x, player->bodyPartsPos[15].x, 1.0f, 400.0f);
             Math_ApproachF(&this->targetPos.y, player->bodyPartsPos[15].y, 1.0f, 400.0f);
             Math_ApproachF(&this->targetPos.z, player->bodyPartsPos[15].z, 1.0f, 400.0f);
@@ -1249,6 +1335,7 @@ void BossTw_ShootBeam(BossTw* this, PlayState* play) {
                 break;
 
             case 1:
+<<<<<<< HEAD
                 // SOH [VR] Physical shield: no R to hold. Once caught, the reflection stays for the
                 // rest of this beam while the shield is in hand: the beam stays glued to the shield
                 // (vanilla glues it to the shield hand) and the player steers it freely by turning
@@ -1266,13 +1353,25 @@ void BossTw_ShootBeam(BossTw* this, PlayState* play) {
                         BossTw_AddRingEffect(play, &shieldCenter, 0.5f, 3.0f, 0xFF, this->actor.params, 1, 150);
                     }
                 } else if (CHECK_BTN_ALL(input->cur.button, BTN_R)) {
+=======
+                if (CHECK_BTN_ALL(input->cur.button, BTN_R) || VrCombat_ShieldHeld(player)) {
+>>>>>>> pr-68
                     Player* player = GET_PLAYER(play);
 
                     this->beamDist = sqrtf(SQ(xDiff) + SQ(yDiff) + SQ(zDiff));
                     Math_ApproachF(&this->beamReflectionDist, 2000.0f, 1.0f, 40.0f);
-                    Math_ApproachF(&this->targetPos.x, player->bodyPartsPos[15].x, 1.0f, 400.0f);
-                    Math_ApproachF(&this->targetPos.y, player->bodyPartsPos[15].y, 1.0f, 400.0f);
-                    Math_ApproachF(&this->targetPos.z, player->bodyPartsPos[15].z, 1.0f, 400.0f);
+                    if (VrCombat_ShieldHeld(player)) {
+                        Vec3f shieldCenter;
+
+                        BossTw_GetVrShieldCenter(player, &shieldCenter);
+                        Math_ApproachF(&this->targetPos.x, shieldCenter.x, 1.0f, 400.0f);
+                        Math_ApproachF(&this->targetPos.y, shieldCenter.y, 1.0f, 400.0f);
+                        Math_ApproachF(&this->targetPos.z, shieldCenter.z, 1.0f, 400.0f);
+                    } else {
+                        Math_ApproachF(&this->targetPos.x, player->bodyPartsPos[15].x, 1.0f, 400.0f);
+                        Math_ApproachF(&this->targetPos.y, player->bodyPartsPos[15].y, 1.0f, 400.0f);
+                        Math_ApproachF(&this->targetPos.z, player->bodyPartsPos[15].z, 1.0f, 400.0f);
+                    }
                     if ((this->work[CS_TIMER_1] % 4) == 0) {
                         BossTw_AddRingEffect(play, &player->bodyPartsPos[15], 0.5f, 3.0f, 0xFF, this->actor.params, 1,
                                              150);
