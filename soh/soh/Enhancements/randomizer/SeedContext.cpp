@@ -885,17 +885,26 @@ void Context::ParseArchipelagoOptions() {
     mOptions[RSK_SHUFFLE_BOSS_ENTRANCES].Set(0);
     mOptions[RSK_SHUFFLE_100_GS_REWARD].Set(slotData["shuffle_100_gs_reward"]);
 
-    // Ship's option values are offset by 1 from Archipelago slot data.
-uint8_t triforcePieceTotal = slotData["triforce_hunt_pieces_total"];
-uint8_t triforcePieceRequired = slotData["triforce_hunt_pieces_required"];
+// Ship's option values are offset by 1 from Archipelago slot data.
+    uint8_t triforcePieceTotal = slotData["triforce_hunt_pieces_total"];
+    uint8_t triforcePieceRequired = slotData["triforce_hunt_pieces_required"];
 
-mOptions[RSK_TRIFORCE_HUNT_PIECES_TOTAL].Set(
-    slotData["triforce_hunt"] ? (triforcePieceTotal - 1) : 0);
+    bool triforceHunt = false;
+    if (slotData.contains("triforce_hunt")) {
+        if (slotData["triforce_hunt"].is_boolean()) {
+            triforceHunt = slotData["triforce_hunt"].get<bool>();
+        } else if (slotData["triforce_hunt"].is_number()) {
+            triforceHunt = slotData["triforce_hunt"].get<int>() != 0;
+        }
+    }
 
-if (slotData["triforce_hunt"]) {
-    mOptions[RSK_WINCON].Set(RO_WINCON_TRIFORCE_PIECES);
-    mOptions[RSK_WINCON_TRIFORCE_COUNT].Set(triforcePieceRequired - 1);
-}
+    mOptions[RSK_TRIFORCE_HUNT_PIECES_TOTAL].Set(
+        triforceHunt ? (triforcePieceTotal - 1) : 0);
+
+    if (triforceHunt) {
+        mOptions[RSK_WINCON].Set(RO_WINCON_TRIFORCE_PIECES);
+        mOptions[RSK_WINCON_TRIFORCE_COUNT].Set(triforcePieceRequired - 1);
+    }
     mOptions[RSK_SHUFFLE_BEAN_SOULS].Set(RO_GENERIC_NO);
     mOptions[RSK_SHUFFLE_BOSS_SOULS].Set(slotData["shuffle_boss_souls"]);
     if (slotData["shuffle_fish"] == 0) {

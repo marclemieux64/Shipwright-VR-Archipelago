@@ -4,6 +4,11 @@ include(FetchContent)
 set(CMAKE_SYSTEM_VERSION 10.0 CACHE STRING "" FORCE)
 
 project(soh LANGUAGES C CXX)
+
+if(NOT DEFINED BUILD_REMOTE_CONTROL)
+    set(BUILD_REMOTE_CONTROL 1)
+endif()
+
 set(CMAKE_CXX_STANDARD 20 CACHE STRING "The C++ standard to use")
 set(CMAKE_C_STANDARD 23 CACHE STRING "The C standard to use")
 
@@ -135,6 +140,10 @@ source_group("include" FILES ${Header_Files__include})
 # soh (root)
 file(GLOB_RECURSE soh__ RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "soh/*.c" "soh/*.cpp" "soh/*.h" "soh/*.hpp")
 list(FILTER soh__ EXCLUDE REGEX "^soh/Network/Archipelago/apclientpp/")
+
+if(NOT BUILD_REMOTE_CONTROL)
+    list(FILTER soh__ EXCLUDE REGEX "^soh/Network/Archipelago/")
+endif()
 
 # Add specific files that don't match the pattern
 list(APPEND soh__ ${CMAKE_CURRENT_SOURCE_DIR}/soh/Enhancements/speechsynthesizer/DarwinSpeechSynthesizer.mm)
@@ -300,55 +309,73 @@ include(FetchContent)
 ################################################################################
 # apclientpp + dependencies
 ################################################################################
-add_compile_definitions(ASIO_STANDALONE)
-
-if(NOT DEFINED BUILD_REMOTE_CONTROL)
-    set(BUILD_REMOTE_CONTROL 1)
-endif()
 
 if(BUILD_REMOTE_CONTROL)
+
+    add_compile_definitions(ASIO_STANDALONE)
+
     FetchContent_Declare(
         valijson
         GIT_REPOSITORY https://github.com/tristanpenman/valijson.git
         GIT_TAG v1.0.6
     )
     FetchContent_MakeAvailable(valijson)
-    target_include_directories(${PROJECT_NAME} PRIVATE ${valijson_SOURCE_DIR}/include)
+    target_include_directories(${PROJECT_NAME} PRIVATE
+        ${valijson_SOURCE_DIR}/include
+    )
+
 
     FetchContent_Declare(
-            asio
-            GIT_REPOSITORY https://github.com/chriskohlhoff/asio.git
-            GIT_TAG asio-1-30-2
+        asio
+        GIT_REPOSITORY https://github.com/chriskohlhoff/asio.git
+        GIT_TAG asio-1-30-2
     )
     FetchContent_MakeAvailable(asio)
-    target_include_directories(${PROJECT_NAME} PRIVATE ${asio_SOURCE_DIR}/asio/include)
+    target_include_directories(${PROJECT_NAME} PRIVATE
+        ${asio_SOURCE_DIR}/asio/include
+    )
 
-    # websocketpp has been temporarily removed from vcpkg, see
-    # https://github.com/microsoft/vcpkg/pull/42678#issuecomment-2914451436
+
     FetchContent_Declare(
         websocketpp
         GIT_REPOSITORY https://github.com/zaphoyd/websocketpp.git
         GIT_TAG bce258674b2d544f981da4bf149244a76e8126c9
     )
+
     FetchContent_Populate(websocketpp)
-    target_include_directories(${PROJECT_NAME} PRIVATE ${websocketpp_SOURCE_DIR})
+
+    target_include_directories(${PROJECT_NAME} PRIVATE
+        ${websocketpp_SOURCE_DIR}
+    )
+
 
     FetchContent_Declare(
-            wswrap
-            GIT_REPOSITORY https://github.com/black-sliver/wswrap.git
-            GIT_TAG d0505e0ec53a26743f11051949a0dc66bcf44951
+        apclientpp
+        GIT_REPOSITORY https://github.com/black-sliver/apclientpp.git
+        GIT_TAG 7f33a3849887983378258c2fe8fc3887f687c430
     )
+
+    set(APCLIENTPP_BUILD_TESTING OFF CACHE BOOL "Don't build apclientpp's tests")
+
+    FetchContent_Populate(apclientpp)
+
+    target_include_directories(${PROJECT_NAME} PRIVATE
+        ${apclientpp_SOURCE_DIR}
+    )
+
+
+    FetchContent_Declare(
+        wswrap
+        GIT_REPOSITORY https://github.com/black-sliver/wswrap.git
+        GIT_TAG d0505e0ec53a26743f11051949a0dc66bcf44951
+    )
+
     FetchContent_MakeAvailable(wswrap)
-    target_include_directories(${PROJECT_NAME} PRIVATE ${wswrap_SOURCE_DIR}/include)
 
-    FetchContent_Declare(
-            apclientpp
-            GIT_REPOSITORY https://github.com/black-sliver/apclientpp.git
-            GIT_TAG 7f33a3849887983378258c2fe8fc3887f687c430
-    )
-    SET(APCLIENTPP_BUILD_TESTING OFF CACHE BOOL "Don't build apclientpp's tests")
-    FetchContent_MakeAvailable(apclientpp)
-    target_include_directories(${PROJECT_NAME} PRIVATE ${apclientpp_SOURCE_DIR})
+	target_include_directories(${PROJECT_NAME} PRIVATE
+		${wswrap_SOURCE_DIR}/include
+	)
+
 endif()
 
 # Find/download Dr Libs (For custom audio)
