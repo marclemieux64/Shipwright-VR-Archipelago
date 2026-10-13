@@ -213,6 +213,17 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Android")
     set(PNG_INCLUDE_DIRS ${libpng_SOURCE_DIR} ${libpng_BINARY_DIR})
     set(PNG_PNG_INCLUDE_DIR ${libpng_SOURCE_DIR} CACHE PATH "" FORCE)
     set(PNG_LIBRARY png_static CACHE STRING "" FORCE)
+
+    # --- ADD THIS TO FETCH GLM FOR ANDROID ---
+    FetchContent_Declare(
+        glm
+        GIT_REPOSITORY https://github.com/g-truc/glm.git
+        GIT_TAG 1.0.1
+    )
+    FetchContent_MakeAvailable(glm)
+    # Ensure find_package(glm) maps to the fetched version
+    add_library(glm::glm INTERFACE ALIAS glm)
+    set(glm_FOUND TRUE)
 endif()
 
 add_subdirectory(libultraship ${CMAKE_BINARY_DIR}/libultraship)
