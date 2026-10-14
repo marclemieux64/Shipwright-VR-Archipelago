@@ -1568,7 +1568,9 @@ s32 Player_VrWeldMtxToHand(PlayState* play, const void* mtx, s32 vrHand, const f
     MtxF vrLocal;
     MtxF vrCur;
 
-    if (!(VR_IsInitialized() && VR_GetFirstPerson()) || (vrHand != VR_HAND_LEFT && vrHand != VR_HAND_RIGHT) ||
+    Player* player = GET_PLAYER(play);
+    if (!(VR_IsInitialized() && (VR_GetFirstPerson() || VrArchery_Covers(player))) ||
+        (vrHand != VR_HAND_LEFT && vrHand != VR_HAND_RIGHT) ||
         (sVrHandLimbFrame[vrHand] != (s32)play->state.frames)) {
         return false;
     }
@@ -2041,7 +2043,8 @@ Vec3f sLeftRightFootLimbModelFootPos[] = {
 // is the exception: it rides the dominant hand (VrHookshot_RightLimbHand), and aims from there.
 // Returns true when it overrode the actor's transform.
 static s32 Player_VrAimHeldProjectile(Player* this, Actor* heldActor) {
-    if (!(VR_IsInitialized() && VR_GetFirstPerson() && CVarGetInteger("gVrMotionHands", 1) &&
+    if (!(VR_IsInitialized() && (VR_GetFirstPerson() || VrArchery_Covers(this)) &&
+          CVarGetInteger("gVrMotionHands", 1) &&
           CVarGetInteger("gVrWeaponAim", 1))) {
         return false;
     }
@@ -2260,7 +2263,15 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
             Matrix_Push();
             Matrix_Translate(stringData->pos.x, stringData->pos.y, stringData->pos.z, MTXMODE_APPLY);
 
-            if ((this->stateFlags1 & PLAYER_STATE1_READY_TO_FIRE) && (this->unk_860 >= 0) && (this->unk_834 <= 10)) {
+            // The gallery's stock aim state keeps the band visually pulled before physical
+            // archery has nocked it. Its real touch target is still the braced pouch, producing
+            // two different apparent nock points. Leave the gallery slingshot braced until the
+            // physical pouch transform below takes ownership.
+            s32 vrPhysicalGallerySling = stringData == &sBowStringData[1] && play->shootingGalleryStatus > 0 &&
+                                         VrArchery_Covers(this);
+
+            if (!vrPhysicalGallerySling && (this->stateFlags1 & PLAYER_STATE1_READY_TO_FIRE) &&
+                (this->unk_860 >= 0) && (this->unk_834 <= 10)) {
                 Vec3f sp90;
                 f32 distXYZ;
 
@@ -2336,7 +2347,7 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
                     vrStringDone = true;
                 }
                 if (!vrStringDone) {
-                    Matrix_Scale(1.0f, this->unk_858, 1.0f, MTXMODE_APPLY);
+                    Matrix_Scale(1.0f, vrPhysicalGallerySling ? 0.0f : this->unk_858, 1.0f, MTXMODE_APPLY);
 
                     if (!LINK_IS_ADULT) {
                         Matrix_RotateZ(this->unk_858 * -0.2f, MTXMODE_APPLY);

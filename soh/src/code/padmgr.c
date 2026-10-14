@@ -466,6 +466,12 @@ void PadMgr_HandleRetraceMsg(PadMgr* padMgr) {
                                                                             sVrBindSelDefaults[vrHandIdx][vrBtnIdx]))
                                                     : CVarGetInteger(sVrBindCvars[vrHandIdx][vrBtnIdx],
                                                                      sVrBindDefaults[vrHandIdx][vrBtnIdx]);
+                        // Physical archery exclusively owns the gallery's forced B-slot weapon:
+                        // no face button or ordinary binding may also invoke stock shooting.
+                        // VrArchery_ItemButtonMask injects B below only for a physical nock.
+                        if (VrArchery_GalleryOwnsWeapon()) {
+                            mapped &= ~BTN_B;
+                        }
                         // Mask to the real pad bits (drops the PC-only modifier bits if selected).
                         vrPad->button |= (u16)(mapped & 0xFFFF);
                     }

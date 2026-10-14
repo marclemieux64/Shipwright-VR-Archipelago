@@ -214,6 +214,7 @@ bool VrOcarina_InPlay(void);
 // the one-hand aim ray). Reset clears transient nock state.
 bool VrArchery_Covers(struct Player* player);
 uint16_t VrArchery_ItemButtonMask(void);
+bool VrArchery_GalleryOwnsWeapon(void);
 bool VrArchery_PinchConsumed(int32_t vrHand, uint16_t vrBtnMask);
 bool VrArchery_AimSegment(float* outPosDir6);
 void VrArchery_Reset(void);

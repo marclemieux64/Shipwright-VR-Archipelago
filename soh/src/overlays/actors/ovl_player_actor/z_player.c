@@ -3084,8 +3084,10 @@ s32 func_80834EB8(Player* this, PlayState* play) {
     // aim with the HAND in VR, so the standstill first-person aim stance is pointless — every
     // aim takes the Z-target-style path instead (upper body aims, legs keep walking; the
     // kinematic stick movement stays live because the main action remains locomotion).
-    // Shooting galleries keep their own stock aiming mode.
-    if (VR_IsInitialized() && VR_GetFirstPerson() && (play->shootingGalleryStatus == 0)) {
+    // Physical archery uses the same free motion-hand posture in shooting galleries as it does
+    // everywhere else; only the gallery's ammo, targets and scoring remain special.
+    if ((VR_IsInitialized() && VR_GetFirstPerson() && (play->shootingGalleryStatus == 0)) ||
+        VrArchery_Covers(this)) {
         return 1;
     }
     if ((this->unk_6AD == 0) || (this->unk_6AD == 2)) {
@@ -3298,7 +3300,7 @@ s32 func_808353D8(Player* this, PlayState* play) {
         // path lowers the bow here, and the lower-animation window ate the next press — the
         // "fires once then goes dead" bug.
         if (Player_IsZTargeting(this) || (this->unk_6AD != 0) || (this->stateFlags1 & PLAYER_STATE1_FIRST_PERSON) ||
-            (VR_IsInitialized() && VR_GetFirstPerson())) {
+            (VR_IsInitialized() && VR_GetFirstPerson()) || VrArchery_Covers(this)) {
             if (this->unk_834 == 0) {
                 this->unk_834++;
             }
@@ -14239,9 +14241,11 @@ void Player_Draw(Actor* thisx, PlayState* play2) {
         func_8002EBCC(&this->actor, play, 0);
         func_8002ED80(&this->actor, play, 0);
 
-        if (VR_IsInitialized() && VR_GetFirstPerson()) {
+        if (VR_IsInitialized() && (VR_GetFirstPerson() || VrArchery_Covers(this))) {
             // SOH [VR] The camera sits at Link's head, so draw the full body but cull the head +
             // hat (the game's projected-Z test uses the third-person matrix and doesn't apply).
+            // Physical shooting galleries keep their fixed camera, but still need this override
+            // so the visible slingshot/bow and its pouch share the controller-space grab anchor.
             overrideLimbDraw = Player_OverrideLimbDrawGameplayVRFirstPerson;
         } else if (this->unk_6AD != 0) {
             Vec3f projectedHeadPos;

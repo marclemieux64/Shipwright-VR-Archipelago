@@ -4,6 +4,7 @@ extern "C" {
 #include "functions.h"
 #include "objects/gameplay_keep/gameplay_keep.h"
 extern PlayState* gPlayState;
+extern SaveContext gSaveContext;
 }
 #include "VrCombat.h"
 
@@ -30,9 +31,9 @@ extern PlayState* gPlayState;
 // hand-to-pouch gap, shot from the string hand through the pouch); both read their geometry off
 // the model they render, through the live hand draw matrix.
 //
-// Deliberate fallbacks: shooting galleries, bombchu bowling and horseback keep their own
-// schemes (Covers is false there), and gVrPhysArchery=0 restores the previous behavior where
-// the weapon hand's trigger mirrors the item button.
+// Deliberate fallbacks: gallery transitions, bombchu bowling and horseback keep their own
+// schemes. Live shooting-gallery rounds use this physical interaction with their forced B-slot
+// weapon, and gVrPhysArchery=0 restores the previous trigger-to-item-button behavior.
 
 namespace {
 
@@ -135,7 +136,29 @@ bool HoldsBow(Player* player) {
 }
 
 bool HoldsBowNow() {
-    return gPlayState != NULL && HoldsBow(GET_PLAYER(gPlayState));
+    if (gPlayState == NULL) {
+        return false;
+    }
+    // Vanilla starts both shooting galleries through ITEM_BOW. Child Link still renders and
+    // fires the slingshot, so the gallery's internal item action cannot identify its physical
+    // VR geometry: doing so puts the bow's braced nock behind the visible slingshot. Match the
+    // weapon model chosen by the game instead.
+    if (gPlayState->shootingGalleryStatus > 0) {
+        return LINK_IS_ADULT;
+    }
+    return HoldsBow(GET_PLAYER(gPlayState));
+}
+
+bool ShootingGalleryActive() {
+    return gPlayState != NULL && gPlayState->shootingGalleryStatus > 0;
+}
+
+bool ShootingGalleryWeaponReady() {
+    if (!ShootingGalleryActive()) {
+        return false;
+    }
+    const uint8_t item = gSaveContext.equips.buttonItems[0];
+    return item == ITEM_SLINGSHOT || item == ITEM_BOW;
 }
 
 // Rodrigues rotation of v about unit axis k by the angle with cosine c and sine s.
@@ -341,18 +364,21 @@ bool sBowFullFelt = false;  // full-draw pulse already given this nock
 } // namespace
 
 extern "C" bool VrArchery_Covers(Player* player) {
-    if (!VrItemSelect_ModeActive() || !CVarGetInteger("gVrPhysArchery", 1) || player == NULL ||
-        player->actor.category != ACTORCAT_PLAYER || gPlayState == NULL) {
+    const bool gallery = ShootingGalleryActive();
+    if (!VR_IsInitialized() || (!VrItemSelect_ModeActive() && !gallery) ||
+        !CVarGetInteger("gVrPhysArchery", 1) || player == NULL || player->actor.category != ACTORCAT_PLAYER ||
+        gPlayState == NULL) {
         return false;
     }
-    if (!VrItemSelect_SelectionAllowed()) {
+    if (!gallery && !VrItemSelect_SelectionAllowed()) {
         return false; // scripted control, transitions, ocarina: no nock, no button mask
     }
-    if (gPlayState->shootingGalleryStatus != 0 || gPlayState->bombchuBowlingStatus != 0 ||
+    if (gPlayState->shootingGalleryStatus < 0 || gPlayState->bombchuBowlingStatus != 0 ||
         (player->stateFlags1 & PLAYER_STATE1_ON_HORSE)) {
-        return false; // galleries, bowling and horseback keep their dedicated schemes
+        return false; // gallery transitions, bowling and horseback keep their dedicated schemes
     }
-    return (player->heldItemAction >= PLAYER_IA_BOW && player->heldItemAction <= PLAYER_IA_BOW_0E) ||
+    return ShootingGalleryWeaponReady() ||
+           (player->heldItemAction >= PLAYER_IA_BOW && player->heldItemAction <= PLAYER_IA_BOW_0E) ||
            player->heldItemAction == PLAYER_IA_SLINGSHOT;
 }
 
@@ -376,14 +402,15 @@ extern "C" void VrArchery_Reset(void) {
 // broken. extern "C" linkage is load-bearing for the block-scope FrameInterpolation
 // declarations inside OPEN_DISPS (see VrItemSelect_Draw).
 extern "C" void VrArchery_DrawNockIcon(void) {
+    const bool gallery = ShootingGalleryWeaponReady();
     if (gPlayState == NULL || !CVarGetInteger("gVrArcheryShowIcon", 0) || !CVarGetInteger("gVrPhysArchery", 1) ||
-        !VrItemSelect_ModeActive() || sNocked) {
+        (!VrItemSelect_ModeActive() && !gallery) || sNocked) {
         return;
     }
     Player* player = GET_PLAYER(gPlayState);
-    if (player == NULL ||
+    if (player == NULL || (!gallery &&
         !((player->heldItemAction >= PLAYER_IA_BOW && player->heldItemAction <= PLAYER_IA_BOW_0E) ||
-          player->heldItemAction == PLAYER_IA_SLINGSHOT)) {
+          player->heldItemAction == PLAYER_IA_SLINGSHOT))) {
         return;
     }
     float anchor[3];
@@ -421,10 +448,19 @@ extern "C" uint16_t VrArchery_ItemButtonMask(void) {
     if (!VrArchery_Covers(player)) {
         return 0;
     }
+    // The gallery owns a temporary B-button ammo counter and starts the forced weapon from B,
+    // regardless of where that item is equipped in the player's ordinary loadout.
+    if (ShootingGalleryActive()) {
+        return BTN_B;
+    }
     static const uint16_t kItemButtons[] = { BTN_B,   BTN_CLEFT, BTN_CDOWN, BTN_CRIGHT,
                                              BTN_DUP, BTN_DDOWN, BTN_DLEFT, BTN_DRIGHT };
     const int slot = player->heldItemButton;
     return (slot >= 0 && slot < (int)(sizeof(kItemButtons) / sizeof(kItemButtons[0]))) ? kItemButtons[slot] : 0;
+}
+
+extern "C" bool VrArchery_GalleryOwnsWeapon(void) {
+    return gPlayState != NULL && ShootingGalleryActive() && VrArchery_Covers(GET_PLAYER(gPlayState));
 }
 
 // The string hand's pinch input loses its normal binding only when it is about to nock (near
