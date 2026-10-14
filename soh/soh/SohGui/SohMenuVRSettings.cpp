@@ -3357,6 +3357,12 @@ void SohMenu::AddMenuVRSettings() {
         .Options(CheckboxOptions().DefaultValue(false).Tooltip(
             "Shows a small Deku Nut where the string is nocked on the bow and slingshot, so you "
             "can see where to pinch. Off by default: the string itself is the target."));
+    AddWidget(devPath, "Archery Aim Dot", WIDGET_CVAR_CHECKBOX)
+        .CVar("gVrArcheryAimDot")
+        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
+            "Shows a small yellow dot where the physically aimed bow or slingshot shot line meets "
+            "the world. It appears only while the string or pouch is nocked, and can be disabled "
+            "without changing projectile aim."));
     AddWidget(devPath, "Nock Icon Size: %.0f%%", WIDGET_CVAR_SLIDER_FLOAT)
         .CVar("gVrArcheryIconScale")
         .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrArcheryShowIcon", 0); })

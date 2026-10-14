@@ -49,6 +49,10 @@ float sAimLatch[6] = {};
 bool sAimLatchLive = false; // a nock has produced a valid latch this draw cycle
 int sAimLatchTicks = 0;     // >0: keep serving the latch after the nock ended
 
+constexpr int kAimDotMaxGfx = 20;
+Gfx sAimDotDl[kAimDotMaxGfx];
+Vtx sAimDotVtx[4];
+
 int StringHand() {
     return CVarGetInteger("gVrLeftHanded", 0) ? VR_HAND_LEFT : VR_HAND_RIGHT;
 }
@@ -463,6 +467,67 @@ extern "C" bool VrArchery_GalleryOwnsWeapon(void) {
     return gPlayState != NULL && ShootingGalleryActive() && VrArchery_Covers(GET_PLAYER(gPlayState));
 }
 
+// Optional world-space aim dot. It follows the exact physical string/pouch line used to place and
+// launch the prepared projectile, and sits on the first world surface along that line. No flat-mode
+// or classic-control path reaches this function because VrArchery_AimSegment requires a live VR nock.
+extern "C" void VrArchery_DrawAimDot(void) {
+    if (gPlayState == NULL || !CVarGetInteger("gVrArcheryAimDot", 1) || !sNocked) {
+        return;
+    }
+    float ray[6];
+    if (!VrArchery_AimSegment(ray)) {
+        return;
+    }
+    Vec3f start = { ray[0], ray[1], ray[2] };
+    Vec3f end = { start.x + ray[3] * 4000.0f, start.y + ray[4] * 4000.0f,
+                  start.z + ray[5] * 4000.0f };
+    Vec3f hit;
+    CollisionPoly* poly = NULL;
+    s32 bgId = BGCHECK_SCENE;
+    if (!BgCheck_AnyLineTest3(&gPlayState->colCtx, &start, &end, &hit, &poly, true, true, true, true, &bgId)) {
+        hit = end;
+    }
+
+    const float distance = sqrtf(SQ(hit.x - start.x) + SQ(hit.y - start.y) + SQ(hit.z - start.z));
+    float ws = WorldScale();
+    const float half = fmaxf(0.006f * ws, 0.00375f * distance);
+    const float scale = half / 16.0f;
+    const s16 p = 16;
+    const Vtx dot[4] = {
+        { { { 0, p, 0 }, 0, { 0, 0 }, { 255, 235, 70, 245 } } },
+        { { { p, 0, 0 }, 0, { 0, 0 }, { 255, 235, 70, 245 } } },
+        { { { -p, 0, 0 }, 0, { 0, 0 }, { 255, 235, 70, 245 } } },
+        { { { 0, -p, 0 }, 0, { 0, 0 }, { 255, 235, 70, 245 } } },
+    };
+    for (int i = 0; i < 4; i++) {
+        sAimDotVtx[i] = dot[i];
+    }
+
+    FrameInterpolation_RecordOpenChild((const void*)sAimDotDl, 0);
+    Matrix_Translate(hit.x, hit.y, hit.z, MTXMODE_NEW);
+    Matrix_ReplaceRotation(&gPlayState->billboardMtxF);
+    Matrix_Scale(scale, scale, scale, MTXMODE_APPLY);
+    Mtx* dotMtx = MATRIX_NEWMTX(gPlayState->state.gfxCtx);
+    FrameInterpolation_RecordCloseChild();
+
+    Gfx* pDl = sAimDotDl;
+    gDPPipeSync(pDl++);
+    gDPSetCycleType(pDl++, G_CYC_1CYCLE);
+    gDPSetRenderMode(pDl++, G_RM_XLU_SURF, G_RM_XLU_SURF2);
+    gDPSetCombineMode(pDl++, G_CC_SHADE, G_CC_SHADE);
+    gSPTexture(pDl++, 0, 0, 0, G_TX_RENDERTILE, G_OFF);
+    gSPClearGeometryMode(pDl++, G_CULL_BOTH | G_LIGHTING | G_FOG | G_TEXTURE_GEN | G_TEXTURE_GEN_LINEAR | G_ZBUFFER);
+    gSPSetGeometryMode(pDl++, G_SHADE | G_SHADING_SMOOTH);
+    gSPMatrix(pDl++, dotMtx, G_MTX_MODELVIEW | G_MTX_LOAD | G_MTX_NOPUSH);
+    gSPVertex(pDl++, (uintptr_t)sAimDotVtx, 4, 0);
+    gSP2Triangles(pDl++, 0, 2, 1, 0, 1, 2, 3, 0);
+    gSPEndDisplayList(pDl++);
+
+    OPEN_DISPS(gPlayState->state.gfxCtx);
+    gSPDisplayList(POLY_XLU_DISP++, sAimDotDl);
+    CLOSE_DISPS(gPlayState->state.gfxCtx);
+}
+
 // The string hand's pinch input loses its normal binding only when it is about to nock (near
 // the weapon) or currently drawn — a pinch elsewhere keeps whatever it is bound to.
 extern "C" bool VrArchery_PinchConsumed(int32_t vrHand, uint16_t vrBtnMask) {
@@ -743,6 +808,7 @@ void ArcheryTick() {
 void RegisterVrArchery() {
     COND_HOOK(OnPlayerUpdate, true, ArcheryTick);
     COND_HOOK(OnPlayDrawEnd, true, VrArchery_DrawNockIcon);
+    COND_HOOK(OnPlayDrawEnd, true, VrArchery_DrawAimDot);
 }
 
 static RegisterShipInitFunc initVrArchery(RegisterVrArchery);
