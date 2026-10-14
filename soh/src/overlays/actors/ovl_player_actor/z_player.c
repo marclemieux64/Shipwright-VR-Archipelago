@@ -3715,27 +3715,39 @@ int32_t Player_VrSelectItem(PlayState* play, Player* this, int32_t slot) {
     s8 itemAction;
     Actor* held;
     bool explosive;
+    bool underwaterHookshotTransition;
+
+    if (slot < -1 || slot > 3) {
+        return false;
+    }
+
+    item = slot < 0 ? ITEM_NONE : Player_GetItemOnButton(play, slot);
+    itemAction = Player_ItemToItemAction(item);
+    underwaterHookshotTransition =
+        (this->stateFlags1 & PLAYER_STATE1_IN_WATER) && (this->currentBoots == PLAYER_BOOTS_IRON) &&
+        (this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) &&
+        ((itemAction == PLAYER_IA_HOOKSHOT) || (itemAction == PLAYER_IA_LONGSHOT) ||
+         ((itemAction == PLAYER_IA_NONE) && Player_HoldsHookshot(this)));
 
     if (!VrItemSelect_SelectionAllowed() || this->actor.category != ACTORCAT_PLAYER ||
-        slot < -1 || slot > 3 || gSaveContext.health == 0 || this->csAction != 0 ||
+        gSaveContext.health == 0 || this->csAction != 0 ||
         play->shootingGalleryStatus != 0 || play->bombchuBowlingStatus != 0 ||
         play->activeCamera != CAM_ID_MAIN || gSaveContext.minigameState == 1 ||
         play->pauseCtx.state != 0 || this->unk_6AD != 0 ||
-        (this->stateFlags1 & (PLAYER_STATE1_START_CHANGING_HELD_ITEM | PLAYER_STATE1_IN_WATER |
-                             PLAYER_STATE1_ON_HORSE | PLAYER_STATE1_DEAD | PLAYER_STATE1_CLIMBING_LADDER |
-                             PLAYER_STATE1_CLIMBING_LEDGE | PLAYER_STATE1_HANGING_OFF_LEDGE)) ||
+        (this->stateFlags1 & (PLAYER_STATE1_START_CHANGING_HELD_ITEM | PLAYER_STATE1_ON_HORSE |
+                             PLAYER_STATE1_DEAD | PLAYER_STATE1_CLIMBING_LADDER | PLAYER_STATE1_CLIMBING_LEDGE |
+                             PLAYER_STATE1_HANGING_OFF_LEDGE)) ||
+        ((this->stateFlags1 & PLAYER_STATE1_IN_WATER) && !underwaterHookshotTransition) ||
         (this->stateFlags3 & PLAYER_STATE3_FLYING_WITH_HOOKSHOT) || this->actor.parent != NULL ||
         this->heldItemAction != this->itemAction ||
         this->upperActionFunc == Player_UpperAction_ChangeHeldItem) {
         return false;
     }
 
-    item = slot < 0 ? ITEM_NONE : Player_GetItemOnButton(play, slot);
     // Disabled/empty buttons must not become a way around vanilla restrictions.
     if (slot >= 0 && (item >= ITEM_NONE_FE || item != VrItemSelect_PendingItem())) {
         return 2;
     }
-    itemAction = Player_ItemToItemAction(item);
     if (itemAction < PLAYER_IA_NONE || itemAction >= PLAYER_IA_MAX) {
         return 2;
     }
