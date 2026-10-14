@@ -1,6 +1,12 @@
 ![Ship of Harkinian](docs/shiptitle.darkmode.png#gh-dark-mode-only)
 ![Ship of Harkinian](docs/shiptitle.lightmode.png#gh-light-mode-only)
 
+## Project disclaimer
+
+The modifications and integration work in this fork were created as a hobby project with substantial assistance from multiple AI tools, including, but not limited to, Gemini, Claude, ChatGPT, Gemini in Antigravity, and Codex.
+
+I do not claim to be a professional programmer or to understand every part of the code perfectly. I am working on this project to learn, experiment, and have fun. This fork should therefore not be considered a professionally developed or supported product. It may contain mistakes, incomplete work, or unexpected bugs. I am not affiliated with, endorsed by, or an official representative of any project used in this fork. I am also not responsible for how others use, modify, interpret, or redistribute this fork. The original projects and their contributors deserve credit for the underlying work on which this experiment is based.
+
 ## Website
 
 Official Website: https://www.shipofharkinian.com/

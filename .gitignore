@@ -460,6 +460,7 @@ soh/properties.h
 .clangd
 /clang-format
 /clang-format.exe
+/.android-sdk/
 *.o2r
 
 # Claude working docs (design notes, plans)

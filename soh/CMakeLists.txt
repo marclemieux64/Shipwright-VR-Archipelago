@@ -314,10 +314,15 @@ if(BUILD_REMOTE_CONTROL)
 
     add_compile_definitions(ASIO_STANDALONE)
 
+    if(CMAKE_SYSTEM_NAME STREQUAL "Android")
+        add_compile_definitions(WSWRAP_NO_SSL AP_PREFER_UNENCRYPTED)
+    endif()
+
     FetchContent_Declare(
         valijson
         GIT_REPOSITORY https://github.com/tristanpenman/valijson.git
         GIT_TAG v1.0.6
+        GIT_SUBMODULES ""
     )
     FetchContent_MakeAvailable(valijson)
     target_include_directories(${PROJECT_NAME} PRIVATE

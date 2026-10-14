@@ -35,7 +35,7 @@ android {
                           '-DANDROID_STL=c++_static',
                           '-DSDL_SHARED=ON',
                           '-DSDL_STATIC=OFF',
-                          '-DBUILD_REMOTE_CONTROL=OFF',
+                          '-DBUILD_REMOTE_CONTROL=ON',
                           '-DSPDLOG_MIN_CUTOFF=SPDLOG_LEVEL_INFO'
                 targets 'soh', 'SDL2'
             }

@@ -219,11 +219,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Android")
         glm
         GIT_REPOSITORY https://github.com/g-truc/glm.git
         GIT_TAG 1.0.1
+        OVERRIDE_FIND_PACKAGE
     )
     FetchContent_MakeAvailable(glm)
-    # Ensure find_package(glm) maps to the fetched version
-    add_library(glm::glm INTERFACE ALIAS glm)
-    set(glm_FOUND TRUE)
 endif()
 
 add_subdirectory(libultraship ${CMAKE_BINARY_DIR}/libultraship)
