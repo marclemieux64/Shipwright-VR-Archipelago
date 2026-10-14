@@ -2697,6 +2697,17 @@ void Player_StartChangingHeldItem(Player* this, PlayState* play) {
 }
 
 void Player_UpdateItems(Player* this, PlayState* play) {
+    // SOH [VR] Bombchu Bowling owns the B slot for the whole round. Selector mode normally
+    // forbids buttons from changing held equipment, so passively put the forced minigame item
+    // in Link's hand as soon as ordinary item-changing state permits it. This uses the passive
+    // selector transition so no actor or fuse exists until the player grips the VR preview.
+    if (VR_IsInitialized() && CVarGetInteger("gVrItemSelect", 1) && play->bombchuBowlingStatus > 0 &&
+        this->actor.category == ACTORCAT_PLAYER && this->heldItemAction != PLAYER_IA_BOMBCHU &&
+        this->heldItemAction == this->itemAction && this->csAction == 0 &&
+        !(this->stateFlags1 & (PLAYER_STATE1_CARRYING_ACTOR | PLAYER_STATE1_IN_CUTSCENE |
+                              PLAYER_STATE1_START_CHANGING_HELD_ITEM))) {
+        Player_VrSelectItem(play, this, 0);
+    }
     // SOH [VR] Selection is an explicit request, not an item-button press. Resolve it
     // before the upper action can interpret a release as firing the old item.
     if (VrItemSelect_ModeActive() && this->actor.category == ACTORCAT_PLAYER &&
@@ -3716,6 +3727,7 @@ int32_t Player_VrSelectItem(PlayState* play, Player* this, int32_t slot) {
     Actor* held;
     bool explosive;
     bool underwaterHookshotTransition;
+    bool bowlingBombchu;
 
     if (slot < -1 || slot > 3) {
         return false;
@@ -3723,16 +3735,18 @@ int32_t Player_VrSelectItem(PlayState* play, Player* this, int32_t slot) {
 
     item = slot < 0 ? ITEM_NONE : Player_GetItemOnButton(play, slot);
     itemAction = Player_ItemToItemAction(item);
+    bowlingBombchu = play->bombchuBowlingStatus > 0 && slot == 0 && itemAction == PLAYER_IA_BOMBCHU;
     underwaterHookshotTransition =
         (this->stateFlags1 & PLAYER_STATE1_IN_WATER) && (this->currentBoots == PLAYER_BOOTS_IRON) &&
         (this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) &&
         ((itemAction == PLAYER_IA_HOOKSHOT) || (itemAction == PLAYER_IA_LONGSHOT) ||
          ((itemAction == PLAYER_IA_NONE) && Player_HoldsHookshot(this)));
 
-    if (!VrItemSelect_SelectionAllowed() || this->actor.category != ACTORCAT_PLAYER ||
+    if ((!VrItemSelect_SelectionAllowed() && !bowlingBombchu) || this->actor.category != ACTORCAT_PLAYER ||
         gSaveContext.health == 0 || this->csAction != 0 ||
-        play->shootingGalleryStatus != 0 || play->bombchuBowlingStatus != 0 ||
-        play->activeCamera != CAM_ID_MAIN || gSaveContext.minigameState == 1 ||
+        play->shootingGalleryStatus != 0 || (play->bombchuBowlingStatus != 0 && !bowlingBombchu) ||
+        (!bowlingBombchu &&
+         (play->activeCamera != CAM_ID_MAIN || gSaveContext.minigameState == 1)) ||
         play->pauseCtx.state != 0 || this->unk_6AD != 0 ||
         (this->stateFlags1 & (PLAYER_STATE1_START_CHANGING_HELD_ITEM | PLAYER_STATE1_ON_HORSE |
                              PLAYER_STATE1_DEAD | PLAYER_STATE1_CLIMBING_LADDER | PLAYER_STATE1_CLIMBING_LEDGE |
@@ -3745,7 +3759,7 @@ int32_t Player_VrSelectItem(PlayState* play, Player* this, int32_t slot) {
     }
 
     // Disabled/empty buttons must not become a way around vanilla restrictions.
-    if (slot >= 0 && (item >= ITEM_NONE_FE || item != VrItemSelect_PendingItem())) {
+    if (slot >= 0 && (item >= ITEM_NONE_FE || (!bowlingBombchu && item != VrItemSelect_PendingItem()))) {
         return 2;
     }
     if (itemAction < PLAYER_IA_NONE || itemAction >= PLAYER_IA_MAX) {
@@ -3912,6 +3926,13 @@ bool Player_VrGrabItem(PlayState* play, Player* this) {
         }
     }
     if (this->heldActor == NULL) return false;
+    if (this->heldActor->id == ACTOR_EN_BOM_CHU) {
+        // SOH [VR] The physical interaction is slower than a button press: allow a longer fuse
+        // only for Bombchus committed through this VR grab path. Six seconds (120 ticks) is
+        // vanilla; ordinary button use and all non-VR gameplay never pass through this code.
+        const f32 fuseSeconds = CLAMP(CVarGetFloat("gVrBombchuFuseSeconds", 8.0f), 6.0f, 20.0f);
+        ((EnBomChu*)this->heldActor)->timer = (s16)(fuseSeconds * 20.0f + 0.5f);
+    }
     this->heldItemId = selectedItem; // explosive initialization may clear it while detaching
     Player_SetUpperActionFunc(this, Player_UpperAction_CarryActor);
     LinkAnimation_PlayLoop(play, &this->upperSkelAnime, &gPlayerAnim_link_normal_carryB_wait);

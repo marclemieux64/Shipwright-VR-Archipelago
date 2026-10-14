@@ -92,6 +92,9 @@ int sRestoreItem = -1;
 // Selector mode last tick — the falling edge (third person, flat screen, F9) clears Link's
 // hands per the behavior plan; the selection fiction belongs to VR first person.
 bool sModeWasInPlay = false;
+// Bombchu Bowling supplies its temporary item through B and may use a non-first-person camera.
+// This latch is separate because the selector state resets outside VR first person.
+bool sBowlingTriggerArmed[2] = { false, false };
 // >0 while a textbox is up and for a few ticks after it closes (see the put-away guard).
 int sTextboxRecentTicks = 0;
 
@@ -288,7 +291,27 @@ void QuickSwapTick() {
 }
 
 void ItemSelectTick() {
+    const bool bowlingTriggerMode = CVarGetInteger("gVrItemSelect", 1) && VR_IsInitialized() &&
+                                    gPlayState != NULL && gPlayState->bombchuBowlingStatus > 0 &&
+                                    !VrPause_InputMenuMode();
+    for (int hand = 0; hand < 2; ++hand) {
+        if (!bowlingTriggerMode) {
+            sBowlingTriggerArmed[hand] = false;
+        } else if (!(VR_GetControllerButton(hand) & VR_BTN_TRIGGER)) {
+            sBowlingTriggerArmed[hand] = true;
+        }
+    }
     if (!SelectorModeInPlay()) {
+        // Bombchu Bowling deliberately keeps the physical Bombchu pocket alive while its
+        // minigame camera is outside ordinary selector mode. The normal full reset includes
+        // VrItemThrow_Reset(); doing that every tick pins both grip histories to "pressed" and
+        // makes it impossible for VrItemThrow_Tick to observe a fresh grab.
+        if (bowlingTriggerMode) {
+            sModeWasInPlay = false;
+            CloseSelector();
+            sSelection.CancelRequest();
+            return;
+        }
         if (sModeWasInPlay && gPlayState != NULL && GameInteractor::IsSaveLoaded(true)) {
             // Falling edge: leaving VR first person clears Link's hands (behavior plan).
             Player_VrModeExitClearHands(gPlayState, GET_PLAYER(gPlayState));
@@ -701,6 +724,14 @@ extern "C" void VrItemSelect_Reset(void) {
 }
 
 extern "C" uint16_t VrItemSelect_TriggerItemMask(int32_t vrHand) {
+    // The VR controller profile reserves both triggers before regular bindings are applied.
+    // Bowling's temporary Bombchu is not held by either hand, so feed its B action here even
+    // when the minigame camera has taken the game out of VR first-person selector mode.
+    if (gPlayState != NULL && CVarGetInteger("gVrItemSelect", 1) && VR_IsInitialized() &&
+        !VrPause_InputMenuMode() && gPlayState->bombchuBowlingStatus > 0) {
+        Player* player = GET_PLAYER(gPlayState);
+        return !VrItemThrow_Active(player) && vrHand == SwordHand() && sBowlingTriggerArmed[vrHand] ? BTN_B : 0;
+    }
     if (!SelectorModeInPlay() || gPlayState == NULL || !sSelection.TriggerArmed(vrHand)) {
         return 0;
     }

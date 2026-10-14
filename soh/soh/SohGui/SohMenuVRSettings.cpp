@@ -1635,6 +1635,25 @@ void SohMenu::AddMenuVRSettings() {
                      .Tooltip("When you get an item and Link holds it up, it sits this much further "
                               "out from your hands (away from you), so it isn't right on top of "
                               "your head. It still follows your hands."));
+    AddWidget(gameplayPath, "Bombchus", WIDGET_SEPARATOR_TEXT);
+    AddWidget(gameplayPath, "Bombchu Floor Aim Arrow", WIDGET_CVAR_CHECKBOX)
+        .CVar("gVrBombchuAimGuide")
+        .Options(CheckboxOptions()
+                     .DefaultValue(true)
+                     .Tooltip("Shows an always-visible yellow arrow on the floor while holding a physical "
+                              "bombchu. The arrow follows your horizontal view direction and shows where "
+                              "the bombchu will crawl after release."));
+    AddWidget(gameplayPath, "Physical Bombchu Fuse: %.1f s", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrBombchuFuseSeconds")
+        .Options(FloatSliderOptions()
+                     .Min(6.0f)
+                     .Max(20.0f)
+                     .DefaultValue(8.0f)
+                     .Step(0.5f)
+                     .Format("%.1f")
+                     .Tooltip("Fuse duration for bombchus grabbed through the physical VR interaction. "
+                              "Defaults to eight seconds; six seconds is the original duration. This does not affect button-used "
+                              "bombchus or non-VR gameplay."));
     AddWidget(gameplayPath, "Climbing", WIDGET_SEPARATOR_TEXT);
     AddWidget(gameplayPath, "Physical Climbing", WIDGET_CVAR_CHECKBOX)
         .CVar("gVrPhysClimb")
