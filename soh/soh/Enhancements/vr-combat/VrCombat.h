@@ -141,6 +141,10 @@ int32_t VrCombat_ShieldBlockJudge(struct Player* player);
 // True when the given VR input on the given hand is DEDICATED to the selector — padmgr skips
 // that input's normal button binding so the opening click never leaks its bound action.
 bool VrItemSelect_ConsumesInput(int32_t vrHand, uint16_t vrBtnMask);
+// On horseback the selector cannot open. Returns true once on each press of its configured
+// input, allowing the player item layer to toggle the bow directly instead.
+bool VrItemSelect_TakeHorseBowToggle(void);
+bool VrItemSelect_HorseBowEnabled(void);
 
 // SELECTOR MODE (gVrItemSelect on, VR first person): the selector equips and the TRIGGER of the
 // hand the item ended up in uses it, replacing "press the C button you assigned it to".
@@ -217,6 +221,9 @@ uint16_t VrArchery_ItemButtonMask(void);
 bool VrArchery_GalleryOwnsWeapon(void);
 bool VrArchery_PinchConsumed(int32_t vrHand, uint16_t vrBtnMask);
 bool VrArchery_AimSegment(float* outPosDir6);
+// Consumes the exact two-hand line captured for a released physical bow shot. Unlike the
+// render-time AimSegment window, this remains valid until the delayed arrow actually launches.
+bool VrArchery_TakeReleasedAim(float* outPosDir6);
 void VrArchery_Reset(void);
 // Fairy Bow profile (geometry read off the bow model, as the slingshot's pouch is).
 // BowStringNock: world point the drawn bowstring's apex belongs at (string hand, capped at max

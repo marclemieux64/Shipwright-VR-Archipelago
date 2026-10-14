@@ -2697,6 +2697,23 @@ void Player_StartChangingHeldItem(Player* this, PlayState* play) {
 }
 
 void Player_UpdateItems(Player* this, PlayState* play) {
+    // Tick even while dismounted so the transient horse mode is cleared immediately.
+    const bool horseBowTogglePressed = VrItemSelect_TakeHorseBowToggle();
+    // SOH [VR] The item compass cannot be used on Epona. Its button becomes an explicit bow
+    // toggle there: one persistent mode equips the horse's B-slot bow and routes it through
+    // the same physical nock/pull/release path used on foot; the other puts it away and returns
+    // the hands to horse control. The selector edge itself must never be interpreted as firing.
+    if ((this->actor.category == ACTORCAT_PLAYER) && (this->stateFlags1 & PLAYER_STATE1_ON_HORSE) &&
+        this->heldItemAction == this->itemAction &&
+        !(this->stateFlags1 & (PLAYER_STATE1_IN_CUTSCENE | PLAYER_STATE1_START_CHANGING_HELD_ITEM)) &&
+        horseBowTogglePressed) {
+        Player_VrSelectItem(play, this, VrItemSelect_HorseBowEnabled() ? 0 : -1);
+        // Do not let this same controller edge fall through to ordinary item processing and
+        // become an immediate bow use. StartChangingHeldItem will run on the next update.
+        sUseHeldItem = sHeldItemButtonIsHeldDown = false;
+        VrArchery_Reset();
+        return;
+    }
     // SOH [VR] Bombchu Bowling owns the B slot for the whole round. Selector mode normally
     // forbids buttons from changing held equipment, so passively put the forced minigame item
     // in Link's hand as soon as ordinary item-changing state permits it. This uses the passive
@@ -3730,12 +3747,18 @@ int32_t Player_VrSelectItem(PlayState* play, Player* this, int32_t slot) {
     bool explosive;
     bool underwaterHookshotTransition;
     bool bowlingBombchu;
+    bool horseBowToggle;
 
     if (slot < -1 || slot > 3) {
         return false;
     }
 
-    item = slot < 0 ? ITEM_NONE : Player_GetItemOnButton(play, slot);
+    // The mounted HUD presents the bow on B without replacing the save file's real B item
+    // (normally the sword). Resolve this VR-only passive request explicitly; asking the ordinary
+    // button resolver for slot 0 would select the sword and fail the horse-bow classification.
+    horseBowToggle = VR_IsInitialized() && CVarGetInteger("gVrItemSelect", 1) &&
+                     (this->stateFlags1 & PLAYER_STATE1_ON_HORSE) && (slot == -1 || slot == 0);
+    item = slot < 0 ? ITEM_NONE : horseBowToggle ? ITEM_BOW : Player_GetItemOnButton(play, slot);
     itemAction = Player_ItemToItemAction(item);
     bowlingBombchu = play->bombchuBowlingStatus > 0 && slot == 0 && itemAction == PLAYER_IA_BOMBCHU;
     underwaterHookshotTransition =
@@ -3744,24 +3767,27 @@ int32_t Player_VrSelectItem(PlayState* play, Player* this, int32_t slot) {
         ((itemAction == PLAYER_IA_HOOKSHOT) || (itemAction == PLAYER_IA_LONGSHOT) ||
          ((itemAction == PLAYER_IA_NONE) && Player_HoldsHookshot(this)));
 
-    if ((!VrItemSelect_SelectionAllowed() && !bowlingBombchu) || this->actor.category != ACTORCAT_PLAYER ||
+    if ((!VrItemSelect_SelectionAllowed() && !bowlingBombchu && !horseBowToggle) ||
+        this->actor.category != ACTORCAT_PLAYER ||
         gSaveContext.health == 0 || this->csAction != 0 ||
         play->shootingGalleryStatus != 0 || (play->bombchuBowlingStatus != 0 && !bowlingBombchu) ||
         (!bowlingBombchu &&
          (play->activeCamera != CAM_ID_MAIN || gSaveContext.minigameState == 1)) ||
         play->pauseCtx.state != 0 || this->unk_6AD != 0 ||
-        (this->stateFlags1 & (PLAYER_STATE1_START_CHANGING_HELD_ITEM | PLAYER_STATE1_ON_HORSE |
-                             PLAYER_STATE1_DEAD | PLAYER_STATE1_CLIMBING_LADDER | PLAYER_STATE1_CLIMBING_LEDGE |
+        (this->stateFlags1 & (PLAYER_STATE1_START_CHANGING_HELD_ITEM | PLAYER_STATE1_DEAD |
+                             PLAYER_STATE1_CLIMBING_LADDER | PLAYER_STATE1_CLIMBING_LEDGE |
                              PLAYER_STATE1_HANGING_OFF_LEDGE)) ||
         ((this->stateFlags1 & PLAYER_STATE1_IN_WATER) && !underwaterHookshotTransition) ||
-        (this->stateFlags3 & PLAYER_STATE3_FLYING_WITH_HOOKSHOT) || this->actor.parent != NULL ||
+        (this->stateFlags3 & PLAYER_STATE3_FLYING_WITH_HOOKSHOT) ||
+        (this->actor.parent != NULL && !horseBowToggle) ||
         this->heldItemAction != this->itemAction ||
         this->upperActionFunc == Player_UpperAction_ChangeHeldItem) {
         return false;
     }
 
     // Disabled/empty buttons must not become a way around vanilla restrictions.
-    if (slot >= 0 && (item >= ITEM_NONE_FE || (!bowlingBombchu && item != VrItemSelect_PendingItem()))) {
+    if (slot >= 0 &&
+        (item >= ITEM_NONE_FE || (!bowlingBombchu && !horseBowToggle && item != VrItemSelect_PendingItem()))) {
         return 2;
     }
     if (itemAction < PLAYER_IA_NONE || itemAction >= PLAYER_IA_MAX) {
