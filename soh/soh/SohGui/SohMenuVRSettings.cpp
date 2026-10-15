@@ -436,11 +436,25 @@ static void VrPerformanceReadout(WidgetInfo& info) {
     VrFrameStats s = {};
     vr_get_frame_stats(&s);
 
+#ifdef __ANDROID__
+    constexpr int singlePassDefault = 1;
+#else
+    constexpr int singlePassDefault = 0;
+#endif
+    const bool singlePassRequested = CVarGetInteger("gVrMultiview", singlePassDefault) != 0;
+    const bool singlePassActive = vr_multiview_enabled();
+    if (singlePassActive) {
+        ImGui::TextUnformatted("Stereo renderer       Single-pass");
+    } else if (singlePassRequested) {
+        ImGui::TextUnformatted("Stereo renderer       Two-pass (restart or unsupported)");
+    } else {
+        ImGui::TextUnformatted("Stereo renderer       Two-pass");
+    }
     ImGui::Text("XR frames submitted   %6.1f Hz", s.frame_hz);
     ImGui::Text("Stereo pairs rendered %6.1f Hz", s.eye_hz);
     ImGui::Separator();
     ImGui::Text("XR wait (headroom)  %6.2f ms", s.wait_ms);
-    ImGui::Text("Both eye passes     %6.2f ms", s.eyes_ms);
+    ImGui::Text("Stereo eye rendering %6.2f ms", s.eyes_ms);
     ImGui::Text("HUD quad pass       %6.2f ms", s.hud_ms);
     ImGui::Text("Companion window    %6.2f ms", s.desktop_ms);
     ImGui::Text("Whole frame         %6.2f ms", s.frame_ms);
@@ -2695,8 +2709,8 @@ void SohMenu::AddMenuVRSettings() {
 
     AddWidget(perfPath, "Render Cost", WIDGET_SEPARATOR_TEXT);
     AddWidget(perfPath, "The game's display list is walked once per eye, every frame (once for both "
-                       "with Single-Pass Stereo on Quest). At 120 Hz that is 240 full traversals a "
-                       "second on one thread, plus the HUD. These "
+                       "when Single-Pass Stereo is supported and enabled). At 120 Hz that is 240 "
+                       "full traversals a second on one thread, plus the HUD. These "
                        "settings trade world-update rate for headroom; head tracking always stays "
                        "at the headset's full rate because skipped frames are reprojected by the "
                        "compositor.",
@@ -2758,16 +2772,20 @@ void SohMenu::AddMenuVRSettings() {
                      .Tooltip("Multiplier on the runtime's recommended per-eye resolution. This is "
                               "the GPU-side knob. Applied when the OpenXR session is created, so "
                               "it takes effect on the next restart."));
-#ifdef __ANDROID__
     AddWidget(perfPath, "Single-Pass Stereo", WIDGET_CVAR_CHECKBOX)
         .CVar("gVrMultiview")
         .Options(CheckboxOptions()
+#ifdef __ANDROID__
                      .DefaultValue(true)
-                     .Tooltip("Walk the game's display list once per frame and let the GPU draw both "
-                              "eyes from it (OpenGL ES multiview), instead of once per eye. Roughly "
-                              "halves the render thread's work. Takes effect the next time the game "
-                              "starts. Turn off if the image looks wrong in one eye."));
+#else
+                     .DefaultValue(false)
 #endif
+                     .Tooltip("Walk the game's display list once per frame and let the GPU draw both "
+                              "eyes from it, instead of once per eye. This can substantially reduce "
+                              "CPU render-thread work without lowering image quality. Supported on "
+                              "OpenGL ES multiview and compatible PC DirectX 11 hardware; unsupported "
+                              "systems automatically keep the normal two-pass renderer. Takes effect "
+                              "the next time VR starts. Turn off if the image looks wrong in one eye."));
     AddWidget(perfPath, "Distance-Based Actor Culling", WIDGET_CVAR_CHECKBOX)
         .CVar("gVrActorCullDistance")
         .Options(CheckboxOptions()
