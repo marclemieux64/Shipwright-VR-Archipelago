@@ -240,6 +240,9 @@ bool VrArchery_BowAlignedMatrix(int32_t vrHand, float* mf16);
 // NockedArrowHand: the VR hand the nocked arrow is welded to (the bow hand, like the string)
 // while a bow nock is drawn; -1 otherwise (the arrow draws exactly as vanilla).
 int32_t VrArchery_NockedArrowHand(void);
+// Same answer, but only when `arrow` is the exact projectile currently held by the player.
+// Elemental child effects use this so an older arrow in flight is never welded to a new nock.
+int32_t VrArchery_NockedArrowHandForActor(struct Actor* arrow);
 
 // Physical bottle scooping (VrBottle.cpp — selector mode): an EMPTY bottle catches by
 // moving its MOUTH (bottle-hand controller + grip-local offset) into a catchable's volume — no

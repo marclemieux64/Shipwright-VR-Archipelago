@@ -6,6 +6,7 @@ extern "C" {
 #include "overlays/actors/ovl_En_Arrow/z_en_arrow.h"
 extern PlayState* gPlayState;
 extern SaveContext gSaveContext;
+bool ArrowCycleMain(void);
 }
 #include "VrCombat.h"
 
@@ -40,6 +41,7 @@ namespace {
 
 bool sNocked = false;
 bool sPinchPrev = true; // require a fresh pinch after entry/reset
+bool sCycleTriggerPrev = true; // same: entering bow mode with it held must not cycle
 float sDrawM = 0.0f;    // current string-hand draw distance, meters
 
 // The firing release is processed by the vanilla pad path a frame AFTER the tick clears the
@@ -447,6 +449,7 @@ extern "C" bool VrArchery_Covers(Player* player) {
 extern "C" void VrArchery_Reset(void) {
     sNocked = false;
     sPinchPrev = true;
+    sCycleTriggerPrev = true;
     sDrawM = 0.0f;
     sAimLatchLive = false;
     sAimLatchTicks = 0;
@@ -625,10 +628,18 @@ extern "C" void VrArchery_DrawAimDot(void) {
 // The string hand's pinch input loses its normal binding only when it is about to nock (near
 // the weapon) or currently drawn — a pinch elsewhere keeps whatever it is bound to.
 extern "C" bool VrArchery_PinchConsumed(int32_t vrHand, uint16_t vrBtnMask) {
-    if (gPlayState == NULL || vrHand != StringHand() || !(vrBtnMask & PinchMask()) || VrOcarina_InPlay()) {
+    if (gPlayState == NULL || VrOcarina_InPlay()) {
         return false;
     }
-    if (!VrArchery_Covers(GET_PLAYER(gPlayState))) {
+    Player* player = GET_PLAYER(gPlayState);
+    if (CVarGetInteger("gVrBowTriggerArrowCycle", 0) && vrHand == BowHand() &&
+        (vrBtnMask & VR_BTN_TRIGGER) && HoldsBowNow() && VrArchery_Covers(player)) {
+        return true;
+    }
+    if (vrHand != StringHand() || !(vrBtnMask & PinchMask())) {
+        return false;
+    }
+    if (!VrArchery_Covers(player)) {
         return false;
     }
     return sNocked || NearBow();
@@ -772,6 +783,14 @@ extern "C" int32_t VrArchery_NockedArrowHand(void) {
     return BowHand();
 }
 
+extern "C" int32_t VrArchery_NockedArrowHandForActor(Actor* arrow) {
+    if (arrow == NULL || gPlayState == NULL) {
+        return -1;
+    }
+    Player* player = GET_PLAYER(gPlayState);
+    return player->heldActor == arrow && arrow->parent == &player->actor ? VrArchery_NockedArrowHand() : -1;
+}
+
 // Draw strength -> arrow power, the VR-bow convention: a full draw is the vanilla shot exactly;
 // a partial draw leaves slower and drops. Consumed once by EnArrow_Shoot at the vanilla release
 // that follows a firing bow release; 0 = not a physical bow shot, leave the shot vanilla.
@@ -828,6 +847,13 @@ void ArcheryTick() {
     sPinchPrev = pinch;
 
     const bool bow = HoldsBow(player);
+    const bool cycleHeld = bow && CVarGetInteger("gVrBowTriggerArrowCycle", 0) &&
+                           (VR_GetControllerButton(BowHand()) & VR_BTN_TRIGGER) != 0;
+    const bool cyclePressed = cycleHeld && !sCycleTriggerPrev;
+    sCycleTriggerPrev = cycleHeld;
+    if (cyclePressed && sNocked && ArrowCycleMain()) {
+        VR_TriggerHaptic(BowHand(), 0.45f, 0.0f, 25.0f);
+    }
     const float gap = CurrentDrawM();
     if (gap >= 0.0f) {
         sDrawM = gap;

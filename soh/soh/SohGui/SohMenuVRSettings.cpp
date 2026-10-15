@@ -1654,6 +1654,13 @@ void SohMenu::AddMenuVRSettings() {
                      .Tooltip("Fuse duration for bombchus grabbed through the physical VR interaction. "
                               "Defaults to eight seconds; six seconds is the original duration. This does not affect button-used "
                               "bombchus or non-VR gameplay."));
+    AddWidget(gameplayPath, "Fairy Bow", WIDGET_SEPARATOR_TEXT);
+    AddWidget(gameplayPath, "Bow-Hand Trigger Cycles Arrows", WIDGET_CVAR_CHECKBOX)
+        .CVar("gVrBowTriggerArrowCycle")
+        .Options(CheckboxOptions().DefaultValue(false).Tooltip(
+            "While a physical bow arrow is nocked, press the bow-hand trigger to cycle through "
+            "normal, fire, ice and light arrows. Types you do not own or cannot afford are skipped. "
+            "Works on foot and on Epona, and does not change non-VR controls."));
     AddWidget(gameplayPath, "Climbing", WIDGET_SEPARATOR_TEXT);
     AddWidget(gameplayPath, "Physical Climbing", WIDGET_CVAR_CHECKBOX)
         .CVar("gVrPhysClimb")
@@ -3331,8 +3338,7 @@ void SohMenu::AddMenuVRSettings() {
                               "hand to the weapon and squeeze its trigger to nock, pull back to "
                               "draw, release to fire along the line between your hands. Releasing "
                               "with almost no draw cancels the shot and keeps the ammo. Disable "
-                              "for the classic scheme (weapon-hand trigger draws and fires). "
-                              "Shooting galleries and horseback keep their own controls."));
+                              "for the classic scheme (weapon-hand trigger draws and fires)."));
     AddWidget(devPath, "Slingshot Nock Reach: %.0f cm", WIDGET_CVAR_SLIDER_FLOAT)
         .CVar("gVrArcheryNockRadius")
         .Options(FloatSliderOptions()
