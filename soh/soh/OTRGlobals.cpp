@@ -12,6 +12,7 @@
 #include "ResourceManagerHelpers.h"
 #include <fast/Fast3dWindow.h>
 #include <fast/vr_openxr.h>
+#include <fast/vr_benchmark.h>
 #include <libultraship/bridge/audiobridge.h>
 #include <libultraship/bridge/gfxdebuggerbridge.h>
 #include <libultraship/bridge/windowbridge.h>
@@ -1558,6 +1559,7 @@ bool VerifyArchiveVersion(OTRVersion version) {
 
 extern "C" void InitOTR(int argc, char* argv[]) {
     OTRGlobals::Instance = new OTRGlobals();
+    vr_benchmark_apply_preset();
     OTRGlobals::Instance->RunExtract(argc, argv);
 
     OTRGlobals::Instance->Initialize();
