@@ -570,6 +570,26 @@ typedef struct VrBlockDebug {
     int32_t lastRelease; // -1 none yet, 0 grip opened, 1 pulled off, 2 Link left the grab
 } VrBlockDebug;
 void VrBlock_GetDebug(VrBlockDebug* out);
+
+// Physical handle doors (VrDoor.cpp, gVrPhysicalDoors). Ordinary unlocked En_Door actors only.
+// A fresh normal VR grab near the handle latches one hand. Turning that hand about the door normal
+// releases the latch; its horizontal position then drives the leaf around the hinge until released.
+// Returns true while the module owns the actor, so EnDoor_Idle does not run the vanilla animation.
+struct EnDoor;
+bool VrDoor_Tick(struct EnDoor* door, struct PlayState* play);
+bool VrDoor_GripConsumed(int32_t hand, uint16_t mask);
+// Suppresses only the player's wall sweep inside the centre of a sufficiently open physical doorway.
+bool VrDoor_AllowsWallPass(struct Actor* actor, const float* nextPos3, const float* prevPos3);
+// Replaces the removed closed-door wall with a player-only collider along the rotated physical leaf.
+void VrDoor_ConstrainPlayerToLeaf(struct Actor* actor);
+// During physical-door streaming, room object banks are merged so prevRoom actors keep their assets.
+bool VrDoor_KeepPreviousRoomActors(void);
+// Supplies a stable virtual viewpoint for EnDoor's front/back display-list choice near the leaf.
+bool VrDoor_StableFaceView(struct EnDoor* door, float* outPos3);
+bool VrDoor_IsPhysicalActive(struct EnDoor* door);
+// While a handle is held, pin the rendered hand to the point it took hold on the moving leaf.
+// The physical controller continues to drive the door, but cannot visually stretch away from it.
+bool VrDoor_PinnedHandMatrix(struct Player* player, int32_t hand, float* mf16);
 // Small body collider (VrBody.cpp, gVrSmallBody — VR first person with roomscale). Link's body keeps
 // the vanilla wall radius for everything; the view (and the hands on the same anchor) is a small
 // circle (gVrSmallBodyRadiusCm) living inside that big circle, so it can get closer to walls than the

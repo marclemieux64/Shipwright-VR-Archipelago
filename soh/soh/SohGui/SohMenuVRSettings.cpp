@@ -1684,6 +1684,37 @@ void SohMenu::AddMenuVRSettings() {
             "normal, fire, ice and light arrows. Types you do not own or cannot afford are skipped. "
             "Works on foot and on Epona, and does not change non-VR controls."));
     AddWidget(gameplayPath, "Climbing", WIDGET_SEPARATOR_TEXT);
+    AddWidget(gameplayPath, "Physical Doors", WIDGET_CVAR_CHECKBOX)
+        .CVar("gVrPhysicalDoors")
+        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
+            "Ordinary unlocked hinged doors can be opened by grabbing the handle, turning it, then "
+            "pushing or pulling the leaf around its hinge. Locked and special doors retain their "
+            "original controls. VR only."));
+    AddWidget(gameplayPath, "Door Handle Right Offset: %.1f", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrDoorHandleRight")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalDoors", 1); })
+        .Options(FloatSliderOptions().Min(0.0f).Max(40.0f).DefaultValue(23.0f).Step(0.5f).Format("%.1f")
+                     .Tooltip("Development calibration: distance from the centre toward the visible right-hand side."));
+    AddWidget(gameplayPath, "Door Handle Height: %.1f", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrDoorHandleY")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalDoors", 1); })
+        .Options(FloatSliderOptions().Min(10.0f).Max(80.0f).DefaultValue(38.0f).Step(0.5f).Format("%.1f")
+                     .Tooltip("Development calibration: moves the Deku Nut grab point vertically."));
+    AddWidget(gameplayPath, "Door Handle Surface Offset: %.1f", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrDoorHandleDepth")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalDoors", 1); })
+        .Options(FloatSliderOptions().Min(0.0f).Max(15.0f).DefaultValue(3.0f).Step(0.5f).Format("%.1f")
+                     .Tooltip("Development calibration: moves the marker outward from each face of the door."));
+    AddWidget(gameplayPath, "Door Grab Radius: %.0f cm", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrDoorGrabRadius")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalDoors", 1); })
+        .Options(FloatSliderOptions().Min(5.0f).Max(35.0f).DefaultValue(18.0f).Step(1.0f).Format("%.0f cm")
+                     .Tooltip("Development calibration: hand distance from the Deku Nut that accepts a fresh grab."));
+    AddWidget(gameplayPath, "Door Swing Amount: %.2fx", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrDoorSwingGain")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalDoors", 1); })
+        .Options(FloatSliderOptions().Min(0.75f).Max(3.0f).DefaultValue(1.75f).Step(0.05f).Format("%.2fx")
+                     .Tooltip("Development calibration: how far the door swings for the physical hand arc."));
     AddWidget(gameplayPath, "Physical Climbing", WIDGET_CVAR_CHECKBOX)
         .CVar("gVrPhysClimb")
         .Options(CheckboxOptions()

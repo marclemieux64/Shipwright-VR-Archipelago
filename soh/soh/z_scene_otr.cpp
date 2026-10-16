@@ -22,6 +22,7 @@
 #include "soh/resource/type/scenecommand/SetLightList.h"
 #include "soh/resource/type/scenecommand/SetPathways.h"
 #include "soh/resource/type/scenecommand/SetTransitionActorList.h"
+#include "soh/Enhancements/vr-combat/VrCombat.h"
 #include "soh/resource/type/scenecommand/SetSkyboxSettings.h"
 #include "soh/resource/type/scenecommand/SetSkyboxModifier.h"
 #include "soh/resource/type/scenecommand/SetTimeSettings.h"
@@ -151,6 +152,29 @@ bool Scene_CommandObjectList(PlayState* play, SOH::ISceneCommand* cmd) {
 
     k = 0;
     i = play->objectCtx.unk_09;
+
+    if (VrDoor_KeepPreviousRoomActors()) {
+        // Normal room streaming replaces this list and kills actors whose object disappears. A
+        // physical open doorway intentionally keeps both rooms live, so retain the old banks and
+        // append only objects the destination room does not already share.
+        i = play->objectCtx.num;
+        for (k = 0; k < cmdObj->objects.size(); ++k) {
+            const s16 wanted = cmdObj->objects[k];
+            bool present = false;
+            for (s32 existing = play->objectCtx.unk_09; existing < play->objectCtx.num; ++existing) {
+                const s16 loaded = play->objectCtx.status[existing].id;
+                if (loaded == wanted || loaded == -wanted) {
+                    present = true;
+                    break;
+                }
+            }
+            if (!present && i < OBJECT_EXCHANGE_BANK_MAX - 1) {
+                OTRfunc_800982FC(&play->objectCtx, i++, wanted);
+            }
+        }
+        play->objectCtx.num = i;
+        return false;
+    }
 
     // Loop until a mismatch in the object lists
     // Then clear all object ids past that in the context object list and kill actors for those objects

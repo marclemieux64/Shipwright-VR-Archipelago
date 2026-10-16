@@ -1661,7 +1661,8 @@ s32 Player_OverrideLimbDrawGameplayVRFirstPerson(PlayState* play, s32 limbIndex,
                 // never substituted with the live controller.
                 // A hand latched on a silver boulder rides it the same way (VrCarry).
                 s32 vrPinned = VrBlock_PinnedHandMatrix(this, vrHand, &handMtx.mf[0][0]) ||
-                               VrCarry_PinnedHandMatrix(this, vrHand, &handMtx.mf[0][0]);
+                               VrCarry_PinnedHandMatrix(this, vrHand, &handMtx.mf[0][0]) ||
+                               VrDoor_PinnedHandMatrix(this, vrHand, &handMtx.mf[0][0]);
                 s32 vrBowAligned = !vrPinned && VrArchery_BowAlignedMatrix(vrHand, &handMtx.mf[0][0]);
                 // SOH [VR] Climbing (VrClimb): a holding hand is drawn on the surface where it took
                 // hold — a fixed offset from the controller, still live (welded as a child below).
