@@ -1690,6 +1690,11 @@ void SohMenu::AddMenuVRSettings() {
             "Ordinary unlocked hinged doors can be opened by grabbing the handle, turning it, then "
             "pushing or pulling the leaf around its hinge. Locked and special doors retain their "
             "original controls. VR only."));
+    AddWidget(gameplayPath, "Show Door Grab Markers", WIDGET_CVAR_CHECKBOX)
+        .CVar("gVrDoorShowGrabMarkers")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalDoors", 1); })
+        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
+            "Shows miniature Deku Nuts at the two physical door-knob grab zones. Hiding them does not disable grabbing."));
     AddWidget(gameplayPath, "Door Handle Right Offset: %.1f", WIDGET_CVAR_SLIDER_FLOAT)
         .CVar("gVrDoorHandleRight")
         .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalDoors", 1); })

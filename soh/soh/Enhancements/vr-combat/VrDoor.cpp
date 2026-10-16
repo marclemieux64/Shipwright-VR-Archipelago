@@ -568,7 +568,7 @@ extern "C" bool VrDoor_PinnedHandMatrix(Player* player, int32_t hand, float* mf1
 // Two miniature Deku Nuts expose the independent knob zones on the front and back faces.
 extern "C" void VrDoor_DrawHandleMarker(void) {
     if (gPlayState == nullptr || (sCandidate == nullptr && sDoor == nullptr) ||
-        !CVarGetInteger("gVrPhysicalDoors", 1)) return;
+        !CVarGetInteger("gVrPhysicalDoors", 1) || !CVarGetInteger("gVrDoorShowGrabMarkers", 1)) return;
     Player* player = GET_PLAYER(gPlayState);
     EnDoor* markerDoor = sDoor != nullptr ? sDoor : sCandidate;
     if (player == nullptr || markerDoor->actor.xzDistToPlayer >= 70.0f) return;
