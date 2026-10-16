@@ -1591,6 +1591,7 @@ void Play_Draw(PlayState* play) {
 
         gSPSegment(POLY_OPA_DISP++, 0x01, play->billboardMtx);
 
+        VR_ResetTransitionFade();
         if ((HREG(80) != 10) || (HREG(92) != 0)) {
             Gfx* gfxP;
             Gfx* sp1CC = POLY_OPA_DISP;

@@ -1,5 +1,6 @@
 #include "global.h"
 #include "vt.h"
+#include "vr_interface.h"
 
 #include <string.h>
 
@@ -87,6 +88,15 @@ void TransitionFade_Draw(void* thisx, Gfx** gfxP) {
     TransitionFade* this = (TransitionFade*)thisx;
     Gfx* gfx;
     Color_RGBA8_u32* color = &this->fadeColor;
+
+    // Only black television fades map cleanly to the opaque headset environment. Coloured
+    // transitions retain their original rectangle until a full-field colour layer is available.
+    if (VR_CanCompositorFade() && color->r == 0 && color->g == 0 && color->b == 0) {
+        if (color->a > 0) {
+            VR_AddTransitionFade(color->r, color->g, color->b, color->a);
+        }
+        return;
+    }
 
     if (color->a > 0) {
         gfx = *gfxP;

@@ -25,6 +25,7 @@
 #include "soh/ResourceManagerHelpers.h"
 #include "soh/ShipUtils.h"
 #include "soh/Enhancements/vr-combat/VrCombat.h" // SOH [VR]
+#include <vr_interface.h>
 #include "soh/Network/Archipelago/Archipelago.h"
 
 #define MIN_QUEST (ResourceMgr_GameHasOriginal() ? QUEST_NORMAL : QUEST_MASTER)
@@ -3311,10 +3312,15 @@ void FileChoose_Main(GameState* thisx) {
     // Draw rando save version warning over the controls text, but before the screen fill fade out
     FileChoose_DrawRandoSaveVersionWarning(&this->state);
 
-    gDPPipeSync(POLY_OPA_DISP++);
-    gSPDisplayList(POLY_OPA_DISP++, sScreenFillSetupDL);
-    gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 0, 0, 0, sScreenFillAlpha);
-    gDPFillRectangle(POLY_OPA_DISP++, 0, 0, gScreenWidth - 1, gScreenHeight - 1);
+    if (VR_CanCompositorFade()) {
+        VR_ResetTransitionFade();
+        VR_AddTransitionFade(0, 0, 0, sScreenFillAlpha);
+    } else {
+        gDPPipeSync(POLY_OPA_DISP++);
+        gSPDisplayList(POLY_OPA_DISP++, sScreenFillSetupDL);
+        gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 0, 0, 0, sScreenFillAlpha);
+        gDPFillRectangle(POLY_OPA_DISP++, 0, 0, gScreenWidth - 1, gScreenHeight - 1);
+    }
 
     CLOSE_DISPS(this->state.gfxCtx);
 }
