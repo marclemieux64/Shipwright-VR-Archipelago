@@ -450,6 +450,14 @@ static void VrPerformanceReadout(WidgetInfo& info) {
     } else {
         ImGui::TextUnformatted("Stereo renderer       Two-pass");
     }
+    const bool hiddenAreaRequested = CVarGetInteger("gVrHiddenAreaMask", 0) != 0;
+    if (vr_visibility_mask_enabled()) {
+        ImGui::TextUnformatted("Hidden-area mask      Active");
+    } else if (hiddenAreaRequested) {
+        ImGui::TextUnformatted("Hidden-area mask      Restart or unsupported");
+    } else {
+        ImGui::TextUnformatted("Hidden-area mask      Off");
+    }
     ImGui::Text("XR frames submitted   %6.1f Hz", s.frame_hz);
     ImGui::Text("Stereo pairs rendered %6.1f Hz", s.eye_hz);
     ImGui::Separator();
@@ -2786,6 +2794,23 @@ void SohMenu::AddMenuVRSettings() {
                               "OpenGL ES multiview and compatible PC DirectX 11 hardware; unsupported "
                               "systems automatically keep the normal two-pass renderer. Takes effect "
                               "the next time VR starts. Turn off if the image looks wrong in one eye."));
+#ifndef __ANDROID__
+    AddWidget(perfPath, "D3D11 State Cache", WIDGET_CVAR_CHECKBOX)
+        .CVar("gVrD3D11StateCache")
+        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
+            "Reuse immutable DirectX 11 depth-stencil and rasterizer states instead of recreating them when "
+            "render modes repeat. This reduces render-thread and driver work without changing image quality. "
+            "Turn off only for performance comparisons or troubleshooting; takes effect immediately."));
+    AddWidget(perfPath, "Hidden-Area Mask", WIDGET_CVAR_CHECKBOX)
+        .CVar("gVrHiddenAreaMask")
+        .Options(CheckboxOptions().DefaultValue(false).Tooltip(
+            "Use the OpenXR runtime's lens-hidden mesh to skip pixels that cannot be seen through the headset "
+            "lenses. This preserves the visible image and can reduce GPU work. Currently supported by the "
+            "DirectX 11 VR renderer; unsupported runtimes automatically render the complete eye image. Takes "
+            "effect the next time the game starts. Frames copied to the desktop companion render a complete "
+            "left eye; a higher Companion Window Divisor leaves more headset-only frames available for this "
+            "optimization."));
+#endif
     AddWidget(perfPath, "Distance-Based Actor Culling", WIDGET_CVAR_CHECKBOX)
         .CVar("gVrActorCullDistance")
         .Options(CheckboxOptions()
