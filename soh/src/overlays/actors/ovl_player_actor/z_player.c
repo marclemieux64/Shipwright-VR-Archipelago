@@ -2747,6 +2747,8 @@ void Player_UpdateItems(Player* this, PlayState* play) {
     VrLens_Tick(play, this);
     // SOH [VR] Physical masks: pocket / hand; on and off at the face (currentMask stays vanilla's).
     VrMask_Tick(play, this);
+    // SOH [VR] Physical dungeon keys: pull the current dungeon's key from the left wrist HUD.
+    VrKeys_Tick(play, this);
     // SOH [VR] Bottle pour gesture (inverted + three shakes) commits contents through the
     // item button's own use path from this same boundary.
     VrBottle_Tick(play, this);

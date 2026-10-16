@@ -590,6 +590,12 @@ bool VrDoor_IsPhysicalActive(struct EnDoor* door);
 // While a handle is held, pin the rendered hand to the point it took hold on the moving leaf.
 // The physical controller continues to drive the door, but cannot visually stretch away from it.
 bool VrDoor_PinnedHandMatrix(struct Player* player, int32_t hand, float* mf16);
+// Physical dungeon keys (VrKeys.cpp). Phase one presents inventory keys at the left wrist HUD;
+// holding/releasing never changes inventory. Door insertion and consumption belong to phase two.
+void VrKeys_Tick(struct PlayState* play, struct Player* player);
+bool VrKeys_GripConsumed(int32_t hand, uint16_t mask);
+bool VrKeys_HoldsHand(int32_t hand);
+void VrKeys_Reset(void);
 // Small body collider (VrBody.cpp, gVrSmallBody — VR first person with roomscale). Link's body keeps
 // the vanilla wall radius for everything; the view (and the hands on the same anchor) is a small
 // circle (gVrSmallBodyRadiusCm) living inside that big circle, so it can get closer to walls than the

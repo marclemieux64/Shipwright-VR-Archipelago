@@ -196,6 +196,10 @@ bool SwapChordHeld() {
                                  VrDoor_GripConsumed(VR_HAND_RIGHT, VR_BTN_GRIP))) {
         return false;
     }
+    if ((mask & VR_BTN_GRIP) && (VrKeys_GripConsumed(VR_HAND_LEFT, VR_BTN_GRIP) ||
+                                 VrKeys_GripConsumed(VR_HAND_RIGHT, VR_BTN_GRIP))) {
+        return false;
+    }
     // And grips holding a climbable wall (or on one, about to): climbing hand over hand squeezes both.
     if ((mask & VR_BTN_GRIP) && (VrClimb_GripConsumed(VR_HAND_LEFT, VR_BTN_GRIP) ||
                                  VrClimb_GripConsumed(VR_HAND_RIGHT, VR_BTN_GRIP))) {

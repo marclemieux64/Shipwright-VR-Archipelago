@@ -1632,6 +1632,17 @@ s32 Player_OverrideLimbDrawGameplayVRFirstPerson(PlayState* play, s32 limbIndex,
             // dominant hand (VrHookshot_RightLimbHand swaps the limbs); L_HAND takes the other.
             s32 rightLimbVr = VrHookshot_RightLimbHand(this);
             s32 vrHand = (limbIndex == PLAYER_LIMB_R_HAND) ? rightLimbVr : (rightLimbVr ^ 1);
+            // A physical dungeon key is held in a visibly closed fist. This changes only the
+            // first-person VR hand mesh; the key itself is drawn independently on the same hand.
+            if (VrKeys_HoldsHand(vrHand)) {
+                if (limbIndex == PLAYER_LIMB_L_HAND) {
+                    *dList = ResourceMgr_LoadGfxByName(
+                        gPlayerLeftHandClosedDLs[gSaveContext.linkAge + sDListsLodOffset]);
+                } else {
+                    *dList = ResourceMgr_LoadGfxByName(
+                        sPlayerRightHandClosedDLs[gSaveContext.linkAge + sDListsLodOffset]);
+                }
+            }
             // Default (right-handed) maps each controller to Link's OPPOSITE-side hand model; the
             // reflection that flips a mesh's handedness is per hand because it also mirrors held
             // items' face designs — the sword survives that, but the shield's crest reads as

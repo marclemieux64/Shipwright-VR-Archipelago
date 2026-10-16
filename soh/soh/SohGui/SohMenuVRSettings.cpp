@@ -1720,6 +1720,39 @@ void SohMenu::AddMenuVRSettings() {
         .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalDoors", 1); })
         .Options(FloatSliderOptions().Min(0.75f).Max(3.0f).DefaultValue(1.75f).Step(0.05f).Format("%.2fx")
                      .Tooltip("Development calibration: how far the door swings for the physical hand arc."));
+    AddWidget(gameplayPath, "Physical Dungeon Keys", WIDGET_CVAR_CHECKBOX)
+        .CVar("gVrPhysicalKeys")
+        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
+            "Shows the current dungeon's available Small Key and Boss Key beside the left-hand HUD. "
+            "Reach to one and squeeze grip to hold it. This first phase does not unlock or consume keys."));
+    AddWidget(gameplayPath, "Show Available Key Models", WIDGET_CVAR_CHECKBOX)
+        .CVar("gVrKeyShowAnchors")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
+        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
+            "Shows physical key models at their wrist grab anchors. A key already held remains visible."));
+    AddWidget(gameplayPath, "Key Grab Radius: %.0f cm", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrKeyGrabRadius")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
+        .Options(FloatSliderOptions().Min(5.0f).Max(30.0f).DefaultValue(12.0f).Step(1.0f).Format("%.0f cm")
+                     .Tooltip("How close the grabbing controller must be to a wrist key."));
+    AddWidget(gameplayPath, "Held Key Size: %.0f%%", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrKeyHeldScale")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
+        .Options(FloatSliderOptions().Min(100.0f).Max(600.0f).DefaultValue(180.0f).Step(10.0f).Format("%.0f%%")
+                     .Tooltip("Size of a Small Key or Boss Key while it is held. This does not resize the floating wrist keys."));
+    AddWidget(gameplayPath, "Key Anchor Side: %.1f cm", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrKeyAnchorX")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
+        .Options(FloatSliderOptions().Min(-30.0f).Max(30.0f).DefaultValue(10.0f).Step(0.5f).Format("%.1f cm"));
+    AddWidget(gameplayPath, "Key Anchor Up: %.1f cm", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrKeyAnchorY")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
+        .Options(FloatSliderOptions().Min(-30.0f).Max(30.0f).DefaultValue(8.0f).Step(0.5f).Format("%.1f cm"));
+    AddWidget(gameplayPath, "Key Anchor Forward: %.1f cm", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrKeyAnchorZ")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
+        .Options(FloatSliderOptions().Min(-30.0f).Max(30.0f).DefaultValue(5.0f).Step(0.5f).Format("%.1f cm")
+                     .Tooltip("Base key position relative to the left controller. Boss Key is offset beside it."));
     AddWidget(gameplayPath, "Physical Climbing", WIDGET_CVAR_CHECKBOX)
         .CVar("gVrPhysClimb")
         .Options(CheckboxOptions()
