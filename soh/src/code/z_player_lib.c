@@ -1474,6 +1474,10 @@ s32 Player_OverrideLimbDrawGameplayDefault(PlayState* play, s32 limbIndex, Gfx**
         *dList = NULL;
     }
 
+    // Anchor VR extension: dummy players stay on this normal full-body path, but their transmitted
+    // headset/controller matrices replace the head and hand limb poses when available.
+    Anchor_ApplyRemoteVrLimbPose(this, limbIndex);
+
     return false;
 }
 

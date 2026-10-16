@@ -14269,11 +14269,14 @@ void Player_Draw(Actor* thisx, PlayState* play2) {
         func_8002EBCC(&this->actor, play, 0);
         func_8002ED80(&this->actor, play, 0);
 
-        if (VR_IsInitialized() && (VR_GetFirstPerson() || VrArchery_Covers(this))) {
+        if ((this == GET_PLAYER(play)) && VR_IsInitialized() && (VR_GetFirstPerson() || VrArchery_Covers(this))) {
             // SOH [VR] The camera sits at Link's head, so draw the full body but cull the head +
             // hat (the game's projected-Z test uses the third-person matrix and doesn't apply).
             // Physical shooting galleries keep their fixed camera, but still need this override
             // so the visible slingshot/bow and its pouch share the controller-space grab anchor.
+            // Anchor dummy players deliberately stay on the normal full-body renderer: local
+            // Hide Link Body and first-person head culling are comfort settings for this player,
+            // never visibility instructions sent to other clients.
             overrideLimbDraw = Player_OverrideLimbDrawGameplayVRFirstPerson;
         } else if (this->unk_6AD != 0) {
             Vec3f projectedHeadPos;

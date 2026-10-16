@@ -1720,6 +1720,16 @@ void SohMenu::AddMenuVRSettings() {
         .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalDoors", 1); })
         .Options(FloatSliderOptions().Min(0.75f).Max(3.0f).DefaultValue(1.75f).Step(0.05f).Format("%.2fx")
                      .Tooltip("Development calibration: how far the door swings for the physical hand arc."));
+    AddWidget(gameplayPath, "Share VR Tracking with Anchor", WIDGET_CVAR_CHECKBOX)
+        .CVar("gVrAnchorShareTracking")
+        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
+            "Sends headset and controller poses in Anchor player updates. Hide Link Body is never shared; "
+            "other players continue to see your complete Link avatar."));
+    AddWidget(gameplayPath, "Show Anchor Players' VR Tracking", WIDGET_CVAR_CHECKBOX)
+        .CVar("gVrAnchorShowTracking")
+        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
+            "Uses VR tracking included by compatible Anchor peers to pose their visible head and hands. "
+            "Peers without this extension retain normal networked animations."));
     AddWidget(gameplayPath, "Physical Dungeon Keys", WIDGET_CVAR_CHECKBOX)
         .CVar("gVrPhysicalKeys")
         .Options(CheckboxOptions().DefaultValue(true).Tooltip(
