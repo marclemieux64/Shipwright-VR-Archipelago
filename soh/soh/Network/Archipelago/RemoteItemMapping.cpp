@@ -1,6 +1,7 @@
 #include "Archipelago.h"
 
 #include <cstring>
+#include <libultraship/bridge/consolevariablebridge.h>
 #include "variables.h"
 
 #define CVAR_NONLOCAL_ITEMS CVAR_REMOTE_ARCHIPELAGO("ItemModels")
