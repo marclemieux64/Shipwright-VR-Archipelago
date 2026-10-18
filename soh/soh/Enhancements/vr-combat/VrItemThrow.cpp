@@ -39,8 +39,8 @@ int SwordHandIdx() {
     return CVarGetInteger("gVrLeftHanded", 0) ? VR_HAND_LEFT : VR_HAND_RIGHT;
 }
 
-// The bombchu rides the bomb's present-and-grab path; only its release differs (a drop that
-// falls and crawls, never a throw). Its own switch so the chu alone can fall back to vanilla.
+// The bombchu rides the bomb's present-and-grab path. Its own switch lets the chu alone fall
+// back to vanilla, while gVrPhysBombchuThrow selects a physical throw or a straight drop.
 bool ChuCovered(Player* player) {
     return player->heldItemAction == PLAYER_IA_BOMBCHU && CVarGetInteger("gVrPhysBombchuDrop", 1);
 }
@@ -350,7 +350,9 @@ extern "C" void VrItemThrow_Tick(PlayState* play, Player* player) {
             if (path.count) {
                 const auto latest = path.samples[path.count - 1].timeNs;
                 for (int i = 0; i < path.count; ++i) {
-                    if (latest - path.samples[i].timeNs > 100000000ULL) continue;
+                    // The final part of the gesture carries the release impulse. A 100 ms average
+                    // diluted that peak enough that bombs fell substantially short of vanilla.
+                    if (latest - path.samples[i].timeNs > 60000000ULL) continue;
                     for (int axis = 0; axis < 3; ++axis) velocity[axis] += path.samples[i].linVelMps[axis];
                     ++samples;
                 }
@@ -365,11 +367,17 @@ extern "C" void VrItemThrow_Tick(PlayState* play, Player* player) {
             if (!sReleaseHasGrip) velocity[0] = velocity[1] = velocity[2] = 0.0f;
             sReleaseHasGrip = false;
             const float scale = WorldScale();
-            for (float& component : velocity) component *= scale * 1.4f / 20.0f;
+            const float throwStrength = CVarGetFloat("gVrItemThrowStrength", 1.0f);
+            // Convert metres/second to game units/tick, with enough calibrated impulse to match
+            // the useful reach of the vanilla bomb throw at an ordinary human throwing speed.
+            for (float& component : velocity) component *= scale * 1.9f * throwStrength / 20.0f;
             if (player->heldActor->id == ACTOR_EN_BOM_CHU) {
-                // Never a throw: it falls from the hand and crawls where the controller points.
+                // The crawl direction remains head-directed after landing; only the airborne
+                // release impulse comes from the hand. The option preserves drop-only behavior.
                 SetChuCrawlYaw((EnBomChu*)player->heldActor, hand);
-                velocity[0] = velocity[1] = velocity[2] = 0.0f;
+                if (!CVarGetInteger("gVrPhysBombchuThrow", 1)) {
+                    velocity[0] = velocity[1] = velocity[2] = 0.0f;
+                }
             }
             Player_VrReleaseItem(play, player, velocity);
             VR_TriggerHaptic(hand, 0.35f, 0.0f, 25.0f);

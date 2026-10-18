@@ -256,8 +256,9 @@ void EnBomChu_WaitForRelease(EnBomChu* this, PlayState* play) {
         // vanilla put-down below teleports to Link's feet, which is exactly what a physical
         // drop must not do.
         if (this->vrPhysicalDrop) {
-            this->vrFallSpeed = 0.0f;
             this->vrFallTicks = 0;
+            this->actor.gravity = -1.2f;
+            this->actor.minVelocityY = -20.0f;
             this->actionFunc = EnBomChu_VrFall;
             return;
         }
@@ -270,11 +271,9 @@ void EnBomChu_WaitForRelease(EnBomChu* this, PlayState* play) {
     }
 }
 
-// SOH [VR] Physical drop: the chu falls straight down from where the hand let go (no
-// horizontal impulse, whatever the hand was doing), lands on whatever floor is under it, then
-// crawls in the direction the controller pointed at release (or Link's facing when no intent
-// was recorded, e.g. a release forced by switching items). From landing on, everything is the
-// vanilla EnBomChu_Move. The fuse keeps burning throughout.
+// SOH [VR] Physical release: use the hand's launch velocity (or zero horizontal velocity when
+// drop-only is selected), then crawl in the captured direction after landing. From landing on,
+// everything is the vanilla EnBomChu_Move. The fuse keeps burning throughout.
 void EnBomChu_VrFall(EnBomChu* this, PlayState* play) {
     Player* player = GET_PLAYER(play);
     s16 yaw;
@@ -288,16 +287,14 @@ void EnBomChu_VrFall(EnBomChu* this, PlayState* play) {
         return;
     }
 
-    // Own integrator: Actor_MoveXYZ (in Update) rebuilds actor.velocity from speedXZ every
-    // tick and applies no gravity, so the fall has to live in world.pos directly. Same gravity
-    // as a thrown bomb (-1.2 units/tick^2), terminal speed capped.
-    this->actor.speedXZ = 0.0f;
-    this->vrFallSpeed = CLAMP_MIN(this->vrFallSpeed - 1.2f, -20.0f);
-    this->actor.world.pos.y += this->vrFallSpeed;
-
-    // Floor-only check, the same call the vanilla put-down makes: raycasts down from last
-    // tick's height, snaps pos.y onto the floor and fills floorPoly/floorBgId when landed.
-    Actor_UpdateBgCheckInfo(play, &this->actor, 0.0f, 0.0f, 0.0f, 4);
+    // Bomb-like projectile motion until contact. Update skips its normal Actor_MoveXYZ for
+    // this action, so the release motion is applied exactly once.
+    Actor_MoveXZGravity(&this->actor);
+    Math_StepToF(&this->actor.speedXZ, 0.0f, 0.08f);
+    Actor_UpdateBgCheckInfo(play, &this->actor, 5.0f, 10.0f, 10.0f, 0x1D);
+    if (this->actor.bgCheckFlags & BGCHECKFLAG_WALL) {
+        this->actor.speedXZ = 0.0f;
+    }
 
     if (this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) {
         if ((this->actor.floorPoly == NULL) || (this->actor.floorHeight <= BGCHECK_Y_MIN)) {
@@ -502,8 +499,11 @@ void EnBomChu_Update(Actor* thisx, PlayState* play2) {
         }
     }
 
+    const s32 wasVrFalling = this->actionFunc == EnBomChu_VrFall;
     this->actionFunc(this, play);
-    Actor_MoveXYZ(&this->actor);
+    if (!wasVrFalling) {
+        Actor_MoveXYZ(&this->actor);
+    }
 
     this->collider.elements[0].dim.worldSphere.center.x = this->actor.world.pos.x;
     this->collider.elements[0].dim.worldSphere.center.y = this->actor.world.pos.y;

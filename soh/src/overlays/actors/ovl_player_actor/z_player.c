@@ -4000,12 +4000,9 @@ void Player_VrReleaseItem(PlayState* play, Player* this, const float* velocity) 
         nut->vrPhysicalThrow = true;
         nut->vrLaunchVelocity = held->velocity;
     } else if (held->id == ACTOR_EN_BOM_CHU) {
-        // No throw exists for the chu: every VR release (grip, switch, mode exit, restored
-        // hold) falls from the hand and crawls once landed. The crawl direction, when the
-        // release had a controller to read, is set by VrItemThrow before this call.
+        // The VR release state supplies projectile motion until the Bombchu lands. VrItemThrow
+        // deliberately passes zero velocity when drop-only behavior is selected.
         ((EnBomChu*)held)->vrPhysicalDrop = true;
-        held->velocity.x = held->velocity.y = held->velocity.z = 0.0f;
-        held->speedXZ = 0.0f;
     }
     Player_DetachHeldActor(play, this);
     Player_VrRestorePassiveSelection(this, action, item);
