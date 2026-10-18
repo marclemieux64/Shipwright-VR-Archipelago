@@ -200,6 +200,21 @@ void EnDoor_Idle(EnDoor* this, PlayState* play) {
     s16 phi_v0;
 
     doorType = this->actor.params >> 7 & 7;
+    if (VrKeys_TryEnDoor(this, play)) {
+        // Physical key use removes the lock but deliberately leaves the door leaf closed. The
+        // now-unlocked DOOR_LOCKED actor becomes eligible for VrDoor_Tick below, so opening it is
+        // a separate handle grab rather than an automatic consequence of turning the key.
+        if (this->lockTimer != 0) {
+            if (GameInteractor_Should(VB_CONSUME_SMALL_KEY, true, this)) {
+                gSaveContext.inventory.dungeonKeys[gSaveContext.mapIndex]--;
+                Flags_SetSwitch(play, this->actor.params & 0x3F);
+            }
+            Audio_PlayActorSound2(&this->actor, NA_SE_EV_CHAIN_KEY_UNLOCK);
+            GameInteractor_ExecuteOnDungeonKeyUsedHooks(gSaveContext.mapIndex);
+            this->lockTimer = 0;
+            this->playerIsOpening = 0;
+        }
+    }
     // SOH [VR] An ordinary unlocked handle door may be owned directly by a motion hand. Locked,
     // checkable, ajar and non-VR doors fall straight through to the original behavior.
     if (VrDoor_Tick(this, play)) {

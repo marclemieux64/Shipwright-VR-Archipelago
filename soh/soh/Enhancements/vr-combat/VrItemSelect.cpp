@@ -195,6 +195,15 @@ bool SwapChordHeld() {
                                  VrDoor_GripConsumed(VR_HAND_RIGHT, VR_BTN_GRIP))) {
         return false;
     }
+    // Shutter interactions also use a deliberate two-hand grip. They already consume the
+    // controller bindings in PadMgr; exclude them here as well so the selector's independent
+    // two-grip quick-swap cannot draw the sword and shield on the same press.
+    if ((mask & VR_BTN_GRIP) && (VrJabuDoor_GripConsumed(VR_HAND_LEFT, VR_BTN_GRIP) ||
+                                 VrJabuDoor_GripConsumed(VR_HAND_RIGHT, VR_BTN_GRIP) ||
+                                 VrBossDoor_GripConsumed(VR_HAND_LEFT, VR_BTN_GRIP) ||
+                                 VrBossDoor_GripConsumed(VR_HAND_RIGHT, VR_BTN_GRIP))) {
+        return false;
+    }
     if ((mask & VR_BTN_GRIP) && (VrKeys_GripConsumed(VR_HAND_LEFT, VR_BTN_GRIP) ||
                                  VrKeys_GripConsumed(VR_HAND_RIGHT, VR_BTN_GRIP))) {
         return false;

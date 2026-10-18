@@ -46,6 +46,8 @@ static const std::map<int32_t, const char*> vrHudLayoutOptions = {
 // Open state of the collapsed "Calibration (Dev)" groups (closed every launch).
 static bool sVrComfortCalOpen = false;
 static bool sVrCombatCalOpen = false;
+static bool sVrSmallKeyCalOpen = false;
+static bool sVrBossKeyCalOpen = false;
 
 static bool VrHudWristLayout() {
     return CVarGetInteger("gVrHudLayout", 0) == 0;
@@ -677,6 +679,10 @@ static void VrHudProfileEditor(int child) {
                         VrHudSaveSoon();
                     }
                     for (const auto& f : kVrHudElementFields) {
+                        if ((d.id == VR_HUD_EL_PHYSICAL_KEYS || d.id == VR_HUD_EL_PHYSICAL_BOSS_KEY) &&
+                            strcmp(f.field, "X") == 0) {
+                            continue;
+                        }
                         VrHudElementCVar(name, sizeof(name), child, d.key, f.field);
                         VrHudSliderRow(f.label, name, VrHudElementDefault(d, child, f.field), f.min, f.max, f.fmt, nullptr);
                     }
@@ -1717,6 +1723,11 @@ void SohMenu::AddMenuVRSettings() {
         .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalDoors", 1); })
         .Options(FloatSliderOptions().Min(0.0f).Max(15.0f).DefaultValue(3.0f).Step(0.5f).Format("%.1f")
                      .Tooltip("Development calibration: moves the marker outward from each face of the door."));
+    AddWidget(gameplayPath, "Door Hinge Offset: %.1f", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrDoorHingeOffset")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalDoors", 1); })
+        .Options(FloatSliderOptions().Min(20.0f).Max(40.0f).DefaultValue(27.0f).Step(0.25f).Format("%.2f")
+                     .Tooltip("Aligns handle markers and collision with the rendered door's skeletal hinge while it rotates."));
     AddWidget(gameplayPath, "Door Grab Radius: %.0f cm", WIDGET_CVAR_SLIDER_FLOAT)
         .CVar("gVrDoorGrabRadius")
         .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalDoors", 1); })
@@ -1740,36 +1751,121 @@ void SohMenu::AddMenuVRSettings() {
     AddWidget(gameplayPath, "Physical Dungeon Keys", WIDGET_CVAR_CHECKBOX)
         .CVar("gVrPhysicalKeys")
         .Options(CheckboxOptions().DefaultValue(true).Tooltip(
-            "Shows the current dungeon's available Small Key and Boss Key beside the left-hand HUD. "
-            "Reach to one and squeeze grip to hold it. This first phase does not unlock or consume keys."));
-    AddWidget(gameplayPath, "Show Available Key Models", WIDGET_CVAR_CHECKBOX)
-        .CVar("gVrKeyShowAnchors")
-        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
-        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
-            "Shows physical key models at their wrist grab anchors. A key already held remains visible."));
+            "Adds Small Key and Boss Key icons beneath the left-hand HUD. Reach to an icon and squeeze "
+            "grip to create its physical key; releasing returns it unless a compatible lock consumes it."));
     AddWidget(gameplayPath, "Key Grab Radius: %.0f cm", WIDGET_CVAR_SLIDER_FLOAT)
         .CVar("gVrKeyGrabRadius")
         .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
         .Options(FloatSliderOptions().Min(5.0f).Max(30.0f).DefaultValue(12.0f).Step(1.0f).Format("%.0f cm")
-                     .Tooltip("How close the grabbing controller must be to a wrist key."));
-    AddWidget(gameplayPath, "Held Key Size: %.0f%%", WIDGET_CVAR_SLIDER_FLOAT)
-        .CVar("gVrKeyHeldScale")
+                     .Tooltip("How close the grabbing controller must be to a visible wrist key icon."));
+    AddWidget(gameplayPath, "Key Cards Horizontal Offset: %.0f", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrPhysicalKeysOffsetX")
         .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
-        .Options(FloatSliderOptions().Min(100.0f).Max(600.0f).DefaultValue(180.0f).Step(10.0f).Format("%.0f%%")
-                     .Tooltip("Size of a Small Key or Boss Key while it is held. This does not resize the floating wrist keys."));
-    AddWidget(gameplayPath, "Key Anchor Side: %.1f cm", WIDGET_CVAR_SLIDER_FLOAT)
-        .CVar("gVrKeyAnchorX")
+        .Options(FloatSliderOptions().Min(-100.0f).Max(100.0f).DefaultValue(0.0f).Step(1.0f).Format("%.0f")
+                     .Tooltip("Moves both key cards together. At zero, the gap between them is aligned with "
+                              "the centre of the main left-wrist HUD card."));
+    const size_t smallKeyCalBegin =
+        vrBeginCollapsed(gameplayPath, "Small Key Calibration##SmallKeyCal", &sVrSmallKeyCalOpen);
+    AddWidget(gameplayPath, "Held Size: %.0f%%##SmallKey", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrSmallKeyHeldScale")
         .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
-        .Options(FloatSliderOptions().Min(-30.0f).Max(30.0f).DefaultValue(10.0f).Step(0.5f).Format("%.1f cm"));
-    AddWidget(gameplayPath, "Key Anchor Up: %.1f cm", WIDGET_CVAR_SLIDER_FLOAT)
-        .CVar("gVrKeyAnchorY")
+        .Options(FloatSliderOptions().Min(100.0f).Max(5000.0f).DefaultValue(180.0f).Step(25.0f).Format("%.0f%%")
+                     .Tooltip("Size of the physical Small Key after taking it from the wrist icon."));
+    AddWidget(gameplayPath, "Held Roll: %.0f deg##SmallKey", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrSmallKeyRollDeg")
         .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
-        .Options(FloatSliderOptions().Min(-30.0f).Max(30.0f).DefaultValue(8.0f).Step(0.5f).Format("%.1f cm"));
-    AddWidget(gameplayPath, "Key Anchor Forward: %.1f cm", WIDGET_CVAR_SLIDER_FLOAT)
-        .CVar("gVrKeyAnchorZ")
+        .Options(FloatSliderOptions().Min(-180.0f).Max(180.0f).DefaultValue(-90.0f).Step(5.0f).Format("%.0f deg")
+                     .Tooltip("Rolls the held Small Key around its shaft."));
+    AddWidget(gameplayPath, "Held Horizontal Position: %.1f cm##SmallKey", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrSmallKeyHeldOffsetX")
         .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
-        .Options(FloatSliderOptions().Min(-30.0f).Max(30.0f).DefaultValue(5.0f).Step(0.5f).Format("%.1f cm")
-                     .Tooltip("Base key position relative to the left controller. Boss Key is offset beside it."));
+        .Options(FloatSliderOptions().Min(-30.0f).Max(30.0f).DefaultValue(0.0f).Step(0.5f).Format("%.1f cm"));
+    AddWidget(gameplayPath, "Held Vertical Position: %.1f cm##SmallKey", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrSmallKeyHeldOffsetY")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
+        .Options(FloatSliderOptions().Min(-30.0f).Max(30.0f).DefaultValue(0.0f).Step(0.5f).Format("%.1f cm"));
+    AddWidget(gameplayPath, "Held Forward Position: %.1f cm##SmallKey", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrSmallKeyHeldOffsetZ")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
+        .Options(FloatSliderOptions().Min(-30.0f).Max(30.0f).DefaultValue(0.0f).Step(0.5f).Format("%.1f cm"));
+    AddWidget(gameplayPath, "Lock Rotation Y: %.0f deg##SmallKey", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrSmallKeyInsertRollDeg")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
+        .Options(FloatSliderOptions().Min(-180.0f).Max(180.0f).DefaultValue(90.0f).Step(5.0f).Format("%.0f deg")
+                     .Tooltip("Rotates an inserted Small Key around its Y axis."));
+    AddWidget(gameplayPath, "Lock Rotation X: %.0f deg##SmallKey", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrSmallKeyInsertRotXDeg")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
+        .Options(FloatSliderOptions().Min(-180.0f).Max(180.0f).DefaultValue(0.0f).Step(5.0f).Format("%.0f deg"));
+    AddWidget(gameplayPath, "Lock Rotation Z: %.0f deg##SmallKey", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrSmallKeyInsertRotZDeg")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
+        .Options(FloatSliderOptions().Min(-180.0f).Max(180.0f).DefaultValue(0.0f).Step(5.0f).Format("%.0f deg"));
+    AddWidget(gameplayPath, "Lock Horizontal Position: %.1f##SmallKey", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrSmallKeyLockOffsetX")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
+        .Options(FloatSliderOptions().Min(-50.0f).Max(50.0f).DefaultValue(0.0f).Step(0.5f).Format("%.1f"));
+    AddWidget(gameplayPath, "Lock Vertical Position: %.1f##SmallKey", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrSmallKeyLockOffsetY")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
+        .Options(FloatSliderOptions().Min(-50.0f).Max(50.0f).DefaultValue(0.0f).Step(0.5f).Format("%.1f"));
+    AddWidget(gameplayPath, "Lock Insertion Depth: %.1f##SmallKey", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrSmallKeyLockOffsetDepth")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
+        .Options(FloatSliderOptions().Min(-50.0f).Max(50.0f).DefaultValue(0.0f).Step(0.5f).Format("%.1f"));
+    vrEndCollapsed(gameplayPath, smallKeyCalBegin, &sVrSmallKeyCalOpen);
+
+    const size_t bossKeyCalBegin =
+        vrBeginCollapsed(gameplayPath, "Boss Key Calibration##BossKeyCal", &sVrBossKeyCalOpen);
+    AddWidget(gameplayPath, "Held Size: %.0f%%##BossKey", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrBossKeyHeldScale")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
+        .Options(FloatSliderOptions().Min(100.0f).Max(5000.0f).DefaultValue(180.0f).Step(25.0f).Format("%.0f%%")
+                     .Tooltip("Size of the physical Boss Key after taking it from the wrist icon."));
+    AddWidget(gameplayPath, "Held Roll: %.0f deg##BossKey", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrBossKeyRollDeg")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
+        .Options(FloatSliderOptions().Min(-180.0f).Max(180.0f).DefaultValue(-90.0f).Step(5.0f).Format("%.0f deg")
+                     .Tooltip("Rolls the held Boss Key around its shaft."));
+    AddWidget(gameplayPath, "Held Horizontal Position: %.1f cm##BossKey", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrBossKeyHeldOffsetX")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
+        .Options(FloatSliderOptions().Min(-30.0f).Max(30.0f).DefaultValue(0.0f).Step(0.5f).Format("%.1f cm"));
+    AddWidget(gameplayPath, "Held Vertical Position: %.1f cm##BossKey", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrBossKeyHeldOffsetY")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
+        .Options(FloatSliderOptions().Min(-30.0f).Max(30.0f).DefaultValue(0.0f).Step(0.5f).Format("%.1f cm"));
+    AddWidget(gameplayPath, "Held Forward Position: %.1f cm##BossKey", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrBossKeyHeldOffsetZ")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
+        .Options(FloatSliderOptions().Min(-30.0f).Max(30.0f).DefaultValue(0.0f).Step(0.5f).Format("%.1f cm"));
+    AddWidget(gameplayPath, "Lock Rotation Y: %.0f deg##BossKey", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrBossKeyInsertRollDeg")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
+        .Options(FloatSliderOptions().Min(-180.0f).Max(180.0f).DefaultValue(90.0f).Step(5.0f).Format("%.0f deg")
+                     .Tooltip("Rotates only an inserted Boss Key around its shaft. Set it so the key's flat plane "
+                              "forms a 90-degree angle with the flat lock face."));
+    AddWidget(gameplayPath, "Lock Rotation X: %.0f deg##BossKey", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrBossKeyInsertRotXDeg")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
+        .Options(FloatSliderOptions().Min(-180.0f).Max(180.0f).DefaultValue(0.0f).Step(5.0f).Format("%.0f deg"));
+    AddWidget(gameplayPath, "Lock Rotation Z: %.0f deg##BossKey", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrBossKeyInsertRotZDeg")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
+        .Options(FloatSliderOptions().Min(-180.0f).Max(180.0f).DefaultValue(0.0f).Step(5.0f).Format("%.0f deg"));
+    AddWidget(gameplayPath, "Lock Horizontal Position: %.1f##BossKey", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrBossKeyLockOffsetX")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
+        .Options(FloatSliderOptions().Min(-50.0f).Max(50.0f).DefaultValue(0.0f).Step(0.5f).Format("%.1f"));
+    AddWidget(gameplayPath, "Lock Vertical Position: %.1f##BossKey", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrBossKeyLockOffsetY")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
+        .Options(FloatSliderOptions().Min(-50.0f).Max(50.0f).DefaultValue(0.0f).Step(0.5f).Format("%.1f"));
+    AddWidget(gameplayPath, "Lock Insertion Depth: %.1f##BossKey", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrBossKeyLockOffsetDepth")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalKeys", 1); })
+        .Options(FloatSliderOptions().Min(-50.0f).Max(50.0f).DefaultValue(0.0f).Step(0.5f).Format("%.1f"));
+    vrEndCollapsed(gameplayPath, bossKeyCalBegin, &sVrBossKeyCalOpen);
     AddWidget(gameplayPath, "Physical Climbing", WIDGET_CVAR_CHECKBOX)
         .CVar("gVrPhysClimb")
         .Options(CheckboxOptions()
