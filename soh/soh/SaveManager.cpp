@@ -567,7 +567,10 @@ void SaveManager::StartupCheckAndInitMeta(int fileNum) {
 
     fileMetaInfo[fileNum].randoSave = isRando;
     fileMetaInfo[fileNum].archiSave = isArchi;
-    if (isRando || isArchi) {
+    // Archipelago saves carry their identity in archipelagoData and do not necessarily contain
+    // the built-in randomizer section. Treating them as local-randomizer saves here indexes a
+    // null `seed` value during startup and throws before the file-select screen can appear.
+    if (isRando) {
         nlohmann::json& randoBlock = metaSaveBlock["sections"]["randomizer"]["data"];
 
         for (int i = 0; i < ARRAY_COUNT(fileMetaInfo[fileNum].seedHash); i++) {
