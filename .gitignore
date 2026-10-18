@@ -64,6 +64,8 @@ graphs/
 
 # Per-user configuration
 .python-version
+/.android-sdk/
+/subprojects/
 
 
 ## Ignore Visual Studio temporary files, build results, and
