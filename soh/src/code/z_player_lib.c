@@ -940,7 +940,7 @@ s32 Player_GetEnvironmentalHazard(PlayState* play) {
     TextTriggerEntry* triggerEntry;
     s32 envHazard;
 
-    if (play->roomCtx.curRoom.behaviorType2 == ROOM_BEHAVIOR_TYPE2_3) { // Room is hot
+    if (VrDoor_EnvironmentBehaviorType2(play) == ROOM_BEHAVIOR_TYPE2_3) { // Room is hot
         envHazard = PLAYER_ENV_HAZARD_HOTROOM - 1;
     } else if ((this->underwaterTimer > 80) &&
                ((this->currentBoots == PLAYER_BOOTS_IRON) || (this->underwaterTimer >= 300))) { // Deep underwater
@@ -1638,7 +1638,7 @@ s32 Player_OverrideLimbDrawGameplayVRFirstPerson(PlayState* play, s32 limbIndex,
             s32 vrHand = (limbIndex == PLAYER_LIMB_R_HAND) ? rightLimbVr : (rightLimbVr ^ 1);
             // A physical dungeon key is held in a visibly closed fist. This changes only the
             // first-person VR hand mesh; the key itself is drawn independently on the same hand.
-            if (VrKeys_HoldsHand(vrHand)) {
+            if (VrKeys_HoldsHand(vrHand) || VrBossDoor_HoldsHand(vrHand)) {
                 if (limbIndex == PLAYER_LIMB_L_HAND) {
                     *dList = ResourceMgr_LoadGfxByName(
                         gPlayerLeftHandClosedDLs[gSaveContext.linkAge + sDListsLodOffset]);
@@ -1677,7 +1677,8 @@ s32 Player_OverrideLimbDrawGameplayVRFirstPerson(PlayState* play, s32 limbIndex,
                 // A hand latched on a silver boulder rides it the same way (VrCarry).
                 s32 vrPinned = VrBlock_PinnedHandMatrix(this, vrHand, &handMtx.mf[0][0]) ||
                                VrCarry_PinnedHandMatrix(this, vrHand, &handMtx.mf[0][0]) ||
-                               VrDoor_PinnedHandMatrix(this, vrHand, &handMtx.mf[0][0]);
+                               VrDoor_PinnedHandMatrix(this, vrHand, &handMtx.mf[0][0]) ||
+                               VrBossDoor_PinnedHandMatrix(this, vrHand, &handMtx.mf[0][0]);
                 s32 vrBowAligned = !vrPinned && VrArchery_BowAlignedMatrix(vrHand, &handMtx.mf[0][0]);
                 // SOH [VR] Climbing (VrClimb): a holding hand is drawn on the surface where it took
                 // hold — a fixed offset from the controller, still live (welded as a child below).

@@ -4,6 +4,7 @@ extern "C" {
 #include "functions.h"
 #include "objects/gameplay_keep/gameplay_keep.h"
 #include "overlays/actors/ovl_En_Door/z_en_door.h"
+#include "overlays/actors/ovl_Door_Shutter/z_door_shutter.h"
 extern PlayState* gPlayState;
 }
 
@@ -15,11 +16,10 @@ extern PlayState* gPlayState;
 #include <vr_interface.h>
 #include <cmath>
 
-// Physical ordinary doors. En_Door's actor position is the centre of a 60-unit leaf; its skeleton
-// rotates limb 3 about an edge. The opposite edge carries the knob. We keep all geometry in the
-// actor's closed-door frame, then write the same limb rotation channel used by the stock animation.
+// Physical ordinary doors. En_Door's skeleton offsets the rotating hierarchy by 2700 model units
+// (27 world units) before applying limb 3's opening rotation. We keep all geometry in the actor's
+// closed-door frame, then write the same limb rotation channel used by the stock animation.
 namespace {
-constexpr float kHalfWidth = 30.0f;
 constexpr float kTurnDeg = 22.0f;
 constexpr float kMaxOpenDeg = 90.0f;
 constexpr float kExitDeg = 55.0f;
@@ -56,9 +56,39 @@ float sNearHandleSide[2] = { 1.0f, 1.0f };
 float sGrabOffsetLocal[3] = {};
 float sPrevPlaneDistance = 1e30f;
 
+DoorShutter* sJabuDoor = nullptr;
+DoorShutter* sJabuLatchDoor = nullptr;
+bool sJabuNear[2] = { false, false };
+bool sJabuLatched[2] = { false, false };
+float sJabuLatchSide[2] = {};
+float sJabuStartSeparation = 0.0f;
+
+DoorShutter* sBossCandidate = nullptr;
+DoorShutter* sBossDoor = nullptr;
+DoorShutter* sBossLatchDoor = nullptr;
+bool sBossNear[2] = { false, false };
+bool sBossLatched[2] = { false, false };
+bool sBossGripPrev[2] = { true, true };
+float sBossLatchSide[2] = {};
+float sBossGrabFace[2] = {};
+float sBossGrabLocal[2][2] = {};
+float sBossStartMeanY = 0.0f;
+float sBossStartHeight = 0.0f;
+float sBossEntrySide = 1.0f;
+bool sBossRoomRequested = false;
+bool sBossFullyOpen = false;
+bool sBossLiftArmed = false;
+constexpr float kBossDoorSurface = 12.0f;
+constexpr float kBossDoorRaisedHeight = 240.0f;
+constexpr float kBossDoorReleaseLiftMeters = 0.30f;
+
 float WorldScale() {
     const float ws = VR_GetWorldScale();
     return ws < 1.0f ? 35.0f : ws;
+}
+
+float HingeOffset() {
+    return CVarGetFloat("gVrDoorHingeOffset", 27.0f);
 }
 
 void Axes(const EnDoor* door, float right[3], float normal[3]) {
@@ -74,6 +104,12 @@ float PlayerSide(const EnDoor* door, const Player* player) {
     return d >= 0.0f ? 1.0f : -1.0f;
 }
 
+float EyeDistanceXZ(const EnDoor* door, const PlayState* play) {
+    const float dx = play->view.eye.x - door->actor.world.pos.x;
+    const float dz = play->view.eye.z - door->actor.world.pos.z;
+    return sqrtf(dx * dx + dz * dz);
+}
+
 void HandlePoint(const EnDoor* door, float side, float face, float out[3]) {
     float r[3], n[3]; Axes(door, r, n);
     // Match the side-specific face display list: positive calibration means the visually right
@@ -82,7 +118,8 @@ void HandlePoint(const EnDoor* door, float side, float face, float out[3]) {
     float localZ = CVarGetFloat("gVrDoorHandleDepth", 3.0f) * face;
     if (sDoor == door && sAngle != 0) {
         const float a = sAngle * (2.0f * M_PI / 65536.0f);
-        const float hingeX = localX >= 0.0f ? -kHalfWidth : kHalfWidth;
+        const float hingeOffset = HingeOffset();
+        const float hingeX = localX >= 0.0f ? -hingeOffset : hingeOffset;
         const float relX = localX - hingeX;
         const float rotatedX = relX * cosf(a) + localZ * sinf(a);
         localZ = -relX * sinf(a) + localZ * cosf(a);
@@ -136,7 +173,8 @@ float HandPolar(const EnDoor* door, int hand, float side) {
     if (!HandPosition(hand, p)) return 0.0f;
     Axes(door, right, normal);
     const float handleX = CVarGetFloat("gVrDoorHandleRight", 23.0f) * side;
-    const float hingeLocal = handleX >= 0.0f ? -kHalfWidth : kHalfWidth;
+    const float hingeOffset = HingeOffset();
+    const float hingeLocal = handleX >= 0.0f ? -hingeOffset : hingeOffset;
     const float hingeX = door->actor.world.pos.x + right[0] * hingeLocal;
     const float hingeZ = door->actor.world.pos.z + right[2] * hingeLocal;
     const float x = (p[0] - hingeX) * right[0] + (p[2] - hingeZ) * right[2];
@@ -148,7 +186,8 @@ bool Eligible(const EnDoor* door, PlayState* play, Player* player) {
     const int type = (door->actor.params >> 7) & 7;
     return CVarGetInteger("gVrPhysicalDoors", 1) && VR_IsInitialized() && VR_GetFirstPerson() &&
            !VR_IsFlatScreen() && CVarGetInteger("gVrMotionHands", 1) &&
-           (type == DOOR_ROOMLOAD || type == DOOR_ROOMLOAD2 || type == DOOR_ROOMLOAD7 || type == DOOR_SCENEEXIT) &&
+           (type == DOOR_ROOMLOAD || type == DOOR_ROOMLOAD2 || type == DOOR_ROOMLOAD7 || type == DOOR_SCENEEXIT ||
+            type == DOOR_LOCKED) &&
            door->lockTimer == 0 && play->csCtx.state == CS_STATE_IDLE &&
            play->transitionTrigger == TRANS_TRIGGER_OFF && !(player->stateFlags1 &
                (PLAYER_STATE1_ON_HORSE | PLAYER_STATE1_IN_WATER | PLAYER_STATE1_DEAD));
@@ -251,6 +290,328 @@ void ResolveLoadedRooms(EnDoor* door, PlayState* play, Player* player) {
 }
 } // namespace
 
+extern "C" bool VrJabuDoor_Tick(DoorShutter* door, PlayState* play) {
+    if (door == nullptr || play == nullptr || door->gfxType != 3 ||
+        !CVarGetInteger("gVrPhysicalDoors", 1) || !VR_IsInitialized() || !VR_GetFirstPerson() ||
+        VR_IsFlatScreen() || !CVarGetInteger("gVrMotionHands", 1) || play->csCtx.state != CS_STATE_IDLE) {
+        if (sJabuDoor == door) sJabuDoor = nullptr;
+        if (sJabuLatchDoor == door) sJabuLatchDoor = nullptr;
+        sJabuNear[0] = sJabuNear[1] = false;
+        sJabuLatched[0] = sJabuLatched[1] = false;
+        return false;
+    }
+    if (sJabuLatchDoor != nullptr && sJabuLatchDoor != door) return false;
+
+    float localX[2] = {};
+    bool grip[2] = {};
+    const float s = Math_SinS(door->dyna.actor.shape.rot.y);
+    const float c = Math_CosS(door->dyna.actor.shape.rot.y);
+    for (int hand = 0; hand < 2; ++hand) {
+        float p[3];
+        if (!HandPosition(hand, p)) {
+            sJabuNear[hand] = false;
+            continue;
+        }
+        const float dx = p[0] - door->dyna.actor.world.pos.x;
+        const float dy = p[1] - (door->dyna.actor.world.pos.y + 80.0f);
+        const float dz = p[2] - door->dyna.actor.world.pos.z;
+        localX[hand] = dx * c - dz * s;
+        const float localZ = dx * s + dz * c;
+        sJabuNear[hand] = fabsf(localZ) <= 25.0f && fabsf(dy) <= 75.0f && fabsf(localX[hand]) <= 70.0f;
+        grip[hand] = (VR_GetControllerButton(hand) & VR_BTN_GRIP) != 0;
+        if (!grip[hand]) {
+            sJabuLatched[hand] = false;
+        } else if (!sJabuLatched[hand] && sJabuNear[hand] && fabsf(localX[hand]) >= 4.0f) {
+            sJabuLatchDoor = door;
+            sJabuLatched[hand] = true;
+            sJabuLatchSide[hand] = localX[hand] >= 0.0f ? 1.0f : -1.0f;
+            VR_TriggerHaptic(hand, 0.3f, 0.0f, 25.0f);
+        }
+    }
+
+    const bool oppositeSides = sJabuLatchSide[0] * sJabuLatchSide[1] < 0.0f;
+    const bool holding = sJabuLatched[0] && sJabuLatched[1] && oppositeSides && grip[0] && grip[1];
+    const float separation = fabsf(localX[0] - localX[1]);
+    if (!holding) {
+        if (sJabuDoor == door) sJabuDoor = nullptr;
+        if (!sJabuLatched[0] && !sJabuLatched[1]) sJabuLatchDoor = nullptr;
+        return false;
+    }
+    if (sJabuDoor != door) {
+        sJabuDoor = door;
+        sJabuStartSeparation = separation;
+        return false;
+    }
+    if (separation - sJabuStartSeparation >= 10.0f) {
+        VR_TriggerHaptic(VR_HAND_LEFT, 0.75f, 0.0f, 45.0f);
+        VR_TriggerHaptic(VR_HAND_RIGHT, 0.75f, 0.0f, 45.0f);
+        sJabuDoor = nullptr;
+        sJabuLatchDoor = nullptr;
+        sJabuNear[0] = sJabuNear[1] = false;
+        sJabuLatched[0] = sJabuLatched[1] = false;
+        return true;
+    }
+    return false;
+}
+
+extern "C" bool VrJabuDoor_GripConsumed(int32_t hand, uint16_t mask) {
+    return (mask & VR_BTN_GRIP) && hand >= 0 && hand < 2 &&
+           (sJabuLatched[hand] || sJabuDoor != nullptr);
+}
+
+extern "C" int32_t VrBossDoor_Tick(DoorShutter* door, PlayState* play) {
+    Player* player = play != nullptr ? GET_PLAYER(play) : nullptr;
+    const bool eligible = door != nullptr && player != nullptr && door->doorType == SHUTTER_BOSS &&
+                          door->unlockTimer == 0 && CVarGetInteger("gVrPhysicalDoors", 1) &&
+                          VR_IsInitialized() && VR_GetFirstPerson() && !VR_IsFlatScreen() &&
+                          CVarGetInteger("gVrMotionHands", 1) && play->csCtx.state == CS_STATE_IDLE &&
+                          play->transitionTrigger == TRANS_TRIGGER_OFF;
+    if (!eligible) {
+        if (sBossCandidate == door) sBossCandidate = nullptr;
+        if (sBossDoor == door) sBossDoor = nullptr;
+        if (sBossLatchDoor == door && !sBossFullyOpen) sBossLatchDoor = nullptr;
+        sBossNear[0] = sBossNear[1] = false;
+        sBossLatched[0] = sBossLatched[1] = false;
+        sBossLiftArmed = false;
+        return false;
+    }
+    if (sBossLatchDoor != nullptr && sBossLatchDoor != door) return false;
+    if (door->dyna.actor.xzDistToPlayer < 100.0f) sBossCandidate = door;
+
+    // Walking away without touching the preloaded door restores the room the player still occupies.
+    // This is a streaming operation, not a physical close, so it deliberately has no door sound.
+    if (sBossRoomRequested && !sBossFullyOpen && !sBossLatched[0] && !sBossLatched[1] &&
+        door->dyna.actor.xzDistToPlayer > 140.0f && play->roomCtx.status == 0) {
+        if (play->roomCtx.prevRoom.num >= 0) {
+            Room room = play->roomCtx.curRoom;
+            play->roomCtx.curRoom = play->roomCtx.prevRoom;
+            play->roomCtx.prevRoom = room;
+            Room_FinishRoomChange(play, &play->roomCtx);
+        }
+        door->dyna.actor.room = play->roomCtx.curRoom.num;
+        sBossRoomRequested = false;
+        sBossCandidate = nullptr;
+        sBossLatchDoor = nullptr;
+        sBossLiftArmed = false;
+        return false;
+    }
+
+    const float sn = Math_SinS(door->dyna.actor.shape.rot.y);
+    const float cs = Math_CosS(door->dyna.actor.shape.rot.y);
+    const float pdx = player->actor.world.pos.x - door->dyna.actor.world.pos.x;
+    const float pdz = player->actor.world.pos.z - door->dyna.actor.world.pos.z;
+    const float playerAcross = pdx * sn + pdz * cs;
+
+    // Prepare the boss room before lifting exposes the doorway. Proximity streaming is silent;
+    // only an actual physical lift is allowed to play the sliding-door sound.
+    if (!sBossRoomRequested && door->dyna.actor.xzDistToPlayer < 100.0f && play->roomCtx.status == 0 &&
+        play->roomCtx.prevRoom.num < 0) {
+        const int index = GET_TRANSITION_ACTOR_INDEX(&door->dyna.actor);
+        const TransitionActorEntry* entry = &play->transiActorCtx.list[index];
+        const int destination = entry->sides[0].room == play->roomCtx.curRoom.num ? entry->sides[1].room
+                                                                                  : entry->sides[0].room;
+        if (destination >= 0 && destination != play->roomCtx.curRoom.num &&
+            Room_RequestNewRoom(play, &play->roomCtx, destination)) {
+            sBossRoomRequested = true;
+            sBossEntrySide = playerAcross >= 0.0f ? 1.0f : -1.0f;
+            door->dyna.actor.room = -1;
+        }
+    }
+    float handY[2] = {};
+    bool grip[2] = {};
+    bool fresh[2] = {};
+    for (int hand = 0; hand < 2; ++hand) {
+        float p[3];
+        if (!HandPosition(hand, p)) {
+            sBossNear[hand] = false;
+            continue;
+        }
+        const float dx = p[0] - door->dyna.actor.world.pos.x;
+        const float dz = p[2] - door->dyna.actor.world.pos.z;
+        const float localX = dx * cs - dz * sn;
+        const float localZ = dx * sn + dz * cs;
+        const float localY = p[1] - door->dyna.actor.world.pos.y;
+        float contactX = localX, contactY = localY, contactZ = localZ;
+        float handMtx[4][4];
+        if (VR_GetHandMatrix(hand, handMtx)) {
+            const float len = VrHand_ChildSized() ? 548.0f : 862.0f;
+            float best = fabsf(localZ);
+            for (int point = 0; point < 3; ++point) {
+                const float along = len * 0.5f * point;
+                const float px = handMtx[3][0] + handMtx[0][0] * along;
+                const float py = handMtx[3][1] + handMtx[0][1] * along;
+                const float pz = handMtx[3][2] + handMtx[0][2] * along;
+                const float pdx = px - door->dyna.actor.world.pos.x;
+                const float pdz = pz - door->dyna.actor.world.pos.z;
+                const float lx = pdx * cs - pdz * sn;
+                const float lz = pdx * sn + pdz * cs;
+                const float ly = py - door->dyna.actor.world.pos.y;
+                if (fabsf(lx) <= 70.0f && ly >= 20.0f && ly <= 125.0f && fabsf(lz) < best) {
+                    best = fabsf(lz);
+                    contactX = lx; contactY = ly; contactZ = lz;
+                }
+            }
+        }
+        handY[hand] = p[1];
+        sBossNear[hand] = fabsf(contactX) <= 70.0f && fabsf(contactZ) <= 28.0f &&
+                          contactY >= 20.0f && contactY <= 125.0f;
+        grip[hand] = (VR_GetControllerButton(hand) & VR_BTN_GRIP) != 0;
+        fresh[hand] = grip[hand] && !sBossGripPrev[hand];
+        sBossGripPrev[hand] = grip[hand];
+        if (!grip[hand]) {
+            sBossLatched[hand] = false;
+        } else if (fresh[hand] && !sBossLatched[hand] && sBossNear[hand]) {
+            sBossLatchDoor = door;
+            sBossLatched[hand] = true;
+            sBossLatchSide[hand] = contactX >= 0.0f ? 1.0f : -1.0f;
+            const float surface = playerAcross >= 0.0f ? kBossDoorSurface : -kBossDoorSurface;
+            // As with climbing, snap the closest part of the rendered hand to the surface rather
+            // than putting the controller origin there. This keeps fingertips/palm out of the slab.
+            sBossGrabFace[hand] = localZ + (surface - contactZ);
+            sBossGrabLocal[hand][0] = localX;
+            sBossGrabLocal[hand][1] = localY;
+            VR_TriggerHaptic(hand, 0.3f, 0.0f, 25.0f);
+        }
+    }
+
+    // Any two points on the slab form a valid lift. Requiring opposite halves made the grip
+    // needlessly dependent on the player's hand spacing and was unlike the climbing interaction.
+    const bool holding = sBossLatched[0] && sBossLatched[1] && grip[0] && grip[1];
+    if (!holding) {
+        // A comfortable 30 cm two-handed lift commits the interaction. Releasing either grip
+        // then hands control back to the native shutter action, which smoothly finishes raising
+        // the full-height slab instead of requiring the player to lift it over their head.
+        if (sBossLiftArmed) {
+            door->dyna.actor.velocity.y = 1.0f;
+            sBossFullyOpen = true;
+            sBossLiftArmed = false;
+            VR_TriggerHaptic(VR_HAND_LEFT, 0.75f, 0.0f, 45.0f);
+            VR_TriggerHaptic(VR_HAND_RIGHT, 0.75f, 0.0f, 45.0f);
+            sBossDoor = nullptr;
+            sBossLatched[0] = sBossLatched[1] = false;
+            return 2;
+        }
+        if (!sBossLatched[0] && !sBossLatched[1]) sBossLatchDoor = nullptr;
+        sBossDoor = nullptr;
+        return (sBossLatched[0] || sBossLatched[1]) ? 1 : 0;
+    }
+    const float meanY = (handY[0] + handY[1]) * 0.5f;
+    if (sBossDoor != door) {
+        sBossDoor = door;
+        sBossStartMeanY = meanY;
+        sBossStartHeight = door->dyna.actor.world.pos.y;
+        sBossEntrySide = playerAcross >= 0.0f ? 1.0f : -1.0f;
+        sBossLiftArmed = false;
+        return 1;
+    }
+
+    if (meanY - sBossStartMeanY >= WorldScale() * kBossDoorReleaseLiftMeters) {
+        sBossLiftArmed = true;
+    }
+
+    // The slab is taller than Link, so a comfortable full overhead lift must move the complete
+    // door rather than demanding several metres of real hand travel.
+    const float target = fmaxf(door->dyna.actor.home.pos.y,
+                               fminf(door->dyna.actor.home.pos.y + kBossDoorRaisedHeight,
+                                     sBossStartHeight + (meanY - sBossStartMeanY) * 3.0f));
+    if (target > door->dyna.actor.world.pos.y && door->dyna.actor.world.pos.y <= door->dyna.actor.home.pos.y + 1.0f) {
+        Audio_PlayActorSound2(&door->dyna.actor, NA_SE_EV_SLIDE_DOOR_OPEN);
+    }
+    door->dyna.actor.world.pos.y = target;
+
+    if (target >= door->dyna.actor.home.pos.y + kBossDoorRaisedHeight - 5.0f) {
+        door->dyna.actor.world.pos.y = door->dyna.actor.home.pos.y + kBossDoorRaisedHeight;
+        door->dyna.actor.velocity.y = 1.0f;
+        sBossFullyOpen = true;
+        sBossLiftArmed = false;
+        VR_TriggerHaptic(VR_HAND_LEFT, 0.75f, 0.0f, 45.0f);
+        VR_TriggerHaptic(VR_HAND_RIGHT, 0.75f, 0.0f, 45.0f);
+        sBossDoor = nullptr;
+        sBossLatched[0] = sBossLatched[1] = false;
+        return 2;
+    }
+    return 1;
+}
+
+extern "C" bool VrBossDoor_GripConsumed(int32_t hand, uint16_t mask) {
+    return (mask & VR_BTN_GRIP) && hand >= 0 && hand < 2 &&
+           (sBossLatched[hand] || sBossNear[hand] || sBossDoor != nullptr);
+}
+
+extern "C" bool VrBossDoor_HoldsHand(int32_t hand) {
+    return hand >= 0 && hand < 2 && sBossLatched[hand] && !sBossFullyOpen;
+}
+
+extern "C" bool VrBossDoor_KeepOpen(DoorShutter* door, PlayState* play) {
+    if (door == nullptr || play == nullptr || door != sBossLatchDoor || !sBossFullyOpen) return false;
+    Player* player = GET_PLAYER(play);
+    const float sn = Math_SinS(door->dyna.actor.shape.rot.y);
+    const float cs = Math_CosS(door->dyna.actor.shape.rot.y);
+    const float dx = player->actor.world.pos.x - door->dyna.actor.world.pos.x;
+    const float dz = player->actor.world.pos.z - door->dyna.actor.world.pos.z;
+    const float side = (dx * sn + dz * cs) >= 0.0f ? 1.0f : -1.0f;
+    if (side == sBossEntrySide || door->dyna.actor.xzDistToPlayer < 70.0f) return true;
+    if (sBossRoomRequested && play->roomCtx.status == 0 && play->roomCtx.prevRoom.num >= 0) {
+        Room_FinishRoomChange(play, &play->roomCtx);
+    }
+    sBossLatchDoor = nullptr;
+    sBossCandidate = nullptr;
+    sBossFullyOpen = false;
+    sBossLiftArmed = false;
+    sBossRoomRequested = false;
+    return false;
+}
+
+extern "C" float VrBossDoor_OpenHeight(DoorShutter* door) {
+    return door != nullptr && door == sBossLatchDoor && sBossFullyOpen ? kBossDoorRaisedHeight : 200.0f;
+}
+
+extern "C" bool VrBossDoor_PinnedHandMatrix(Player* player, int32_t hand, float* mf16) {
+    DoorShutter* door = sBossLatchDoor != nullptr ? sBossLatchDoor : sBossCandidate;
+    if (door == nullptr || player == nullptr || mf16 == nullptr || hand < 0 || hand > 1 ||
+        gPlayState == nullptr || player != GET_PLAYER(gPlayState) || sBossFullyOpen) return false;
+    const float sn = Math_SinS(door->dyna.actor.shape.rot.y);
+    const float cs = Math_CosS(door->dyna.actor.shape.rot.y);
+    if (sBossLatched[hand]) {
+        const float face = sBossGrabFace[hand];
+        mf16[12] = door->dyna.actor.world.pos.x + sBossGrabLocal[hand][0] * cs + face * sn;
+        mf16[13] = door->dyna.actor.world.pos.y + sBossGrabLocal[hand][1];
+        mf16[14] = door->dyna.actor.world.pos.z - sBossGrabLocal[hand][0] * sn + face * cs;
+        return true;
+    }
+    const float dx = mf16[12] - door->dyna.actor.world.pos.x;
+    const float dz = mf16[14] - door->dyna.actor.world.pos.z;
+    const float localX = dx * cs - dz * sn;
+    const float localZ = dx * sn + dz * cs;
+    const float localY = mf16[13] - door->dyna.actor.world.pos.y;
+    const float pdx = player->actor.world.pos.x - door->dyna.actor.world.pos.x;
+    const float pdz = player->actor.world.pos.z - door->dyna.actor.world.pos.z;
+    const float playerSide = (pdx * sn + pdz * cs) >= 0.0f ? 1.0f : -1.0f;
+    float contactX = localX, contactY = localY, contactZ = localZ;
+    const float len = VrHand_ChildSized() ? 548.0f : 862.0f;
+    float best = fabsf(localZ);
+    for (int point = 1; point < 3; ++point) {
+        const float along = len * 0.5f * point;
+        const float px = mf16[12] + mf16[0] * along;
+        const float py = mf16[13] + mf16[1] * along;
+        const float pz = mf16[14] + mf16[2] * along;
+        const float hdx = px - door->dyna.actor.world.pos.x;
+        const float hdz = pz - door->dyna.actor.world.pos.z;
+        const float lx = hdx * cs - hdz * sn;
+        const float lz = hdx * sn + hdz * cs;
+        const float ly = py - door->dyna.actor.world.pos.y;
+        if (fabsf(lx) <= 72.0f && ly >= 0.0f && ly <= 150.0f && fabsf(lz) < best) {
+            best = fabsf(lz); contactX = lx; contactY = ly; contactZ = lz;
+        }
+    }
+    if (fabsf(contactX) > 72.0f || contactY < 0.0f || contactY > 150.0f ||
+        contactZ * playerSide >= kBossDoorSurface) return false;
+    const float correction = playerSide * kBossDoorSurface - contactZ;
+    mf16[12] += correction * sn;
+    mf16[14] += correction * cs;
+    return true;
+}
+
 extern "C" bool VrDoor_Tick(EnDoor* door, PlayState* play) {
     Player* player = GET_PLAYER(play);
     sTickFrame = play->state.frames;
@@ -278,9 +639,24 @@ extern "C" bool VrDoor_Tick(EnDoor* door, PlayState* play) {
         return false;
     }
     if (sDoor != nullptr && sDoor != door) return false;
-    if (sDoor == nullptr && door->actor.xzDistToPlayer >= 70.0f) return false;
+    if (sDoor == nullptr && door->actor.xzDistToPlayer >= 70.0f && EyeDistanceXZ(door, play) >= 70.0f) return false;
 
     const float side = sDoor == door ? sSide : PlayerSide(door, player);
+    if (sDoor == nullptr) {
+        const int type = (door->actor.params >> 7) & 7;
+        // At arm's length the VR eye can see through the small clearance between the leaf and its
+        // frame. Preload the adjoining room as soon as a room-loading door enters interaction range
+        // so that clearance reveals real geometry instead of the void. Keep scene-exit doors on the
+        // stock transition path, and do not disturb a room transition already owned by the engine.
+        if (type != DOOR_SCENEEXIT && play->roomCtx.status == 0 && play->roomCtx.prevRoom.num < 0) {
+            sSide = side;
+            sDisplaySide = side;
+            RequestRoom(door, play, player);
+            if (sRoomRequested) {
+                sDoor = door;
+            }
+        }
+    }
     if (sDoor == nullptr) sCandidate = door;
     for (int h = 0; h < 2; ++h) {
         float bestDistance = 1e30f;
@@ -324,6 +700,24 @@ extern "C" bool VrDoor_Tick(EnDoor* door, PlayState* play) {
 
     // Crossing is a geometric fact, not a side effect of the streaming helper. Detect it on every
     // tick once the adjacent room is ready so automatic closing cannot be missed.
+    const int doorType = (door->actor.params >> 7) & 7;
+    if (doorType == DOOR_SCENEEXIT && sHand < 0 &&
+        fabsf(sAngle * (360.0f / 65536.0f)) >= kExitDeg && PlayerSide(door, player) != sSide) {
+        float right[3], normal[3]; Axes(door, right, normal);
+        const float dx = player->actor.world.pos.x - door->actor.world.pos.x;
+        const float dz = player->actor.world.pos.z - door->actor.world.pos.z;
+        if (fabsf(dx * right[0] + dz * right[2]) < 28.0f) {
+            // The separate destination scene cannot coexist with this one. Hand the transition to
+            // the original entrance/exit logic only after Link has physically crossed the opening.
+            player->doorActor = &door->actor;
+            player->doorType = PLAYER_DOORTYPE_HANDLE;
+            player->doorDirection = (sSide > 0.0f) ? 1 : -1;
+            play->state.input[0].press.button |= BTN_A;
+            door->jointTable[3].z = 0;
+            Clear();
+            return false;
+        }
+    }
     if (sRoomRequested && play->roomCtx.status == 0 && PlayerSide(door, player) != sSide) {
         float right[3], normal[3]; Axes(door, right, normal);
         const float dx = player->actor.world.pos.x - door->actor.world.pos.x;
@@ -352,12 +746,15 @@ extern "C" bool VrDoor_Tick(EnDoor* door, PlayState* play) {
             const float dz = player->actor.world.pos.z - door->actor.world.pos.z;
             const float across = fabsf(dx * normal[0] + dz * normal[2]);
             const bool clearedAfterPassage = sPassageCommitted && across > 20.0f;
-            const bool abandonedOnOriginalSide = !sPassageCommitted && door->actor.xzDistToPlayer > 120.0f;
+            const bool abandonedOnOriginalSide = !sPassageCommitted && door->actor.xzDistToPlayer > 120.0f &&
+                                                   EyeDistanceXZ(door, play) > 120.0f;
             // Close after a completed passage, or when Link changes his mind and walks away on the
             // original side. ResolveLoadedRooms keeps whichever side he actually occupies.
             if (clearedAfterPassage || abandonedOnOriginalSide) {
                 constexpr int kAutoCloseStep = 0x300;
-                if (!sCloseSoundPlayed) {
+                // A proximity preload can own sDoor while the leaf is still closed. Resolving that
+                // unused preload is not a door action and must remain silent.
+                if (!sCloseSoundPlayed && (sOpenSoundPlayed || sAngle != 0)) {
                     Audio_PlayActorSound2(&door->actor,
                         (play->sceneNum == SCENE_SHADOW_TEMPLE || play->sceneNum == SCENE_BOTTOM_OF_THE_WELL ||
                          play->sceneNum == SCENE_FIRE_TEMPLE) ? NA_SE_EV_IRON_DOOR_CLOSE : NA_SE_EV_DOOR_CLOSE);
@@ -441,17 +838,8 @@ extern "C" bool VrDoor_Tick(EnDoor* door, PlayState* play) {
         if (type != DOOR_SCENEEXIT && !sRoomRequested && openDeg >= 3.0f) {
             RequestRoom(door, play, player);
         }
-        // Scene exits retain the stock activation once sufficiently open. The ordinary action handler
-        // performs the exit-surface/rando logic; a one-frame A press is injected without changing bindings.
-        if (type == DOOR_SCENEEXIT && openDeg >= kExitDeg) {
-            player->doorActor = &door->actor;
-            player->doorType = PLAYER_DOORTYPE_HANDLE;
-            player->doorDirection = (sSide > 0.0f) ? 1 : -1;
-            play->state.input[0].press.button |= BTN_A;
-            door->jointTable[3].z = 0;
-            Clear();
-            return false;
-        }
+        // Scene exits stay physically open here. Their stock entrance transition is requested only
+        // after Link crosses the doorway plane (above), never merely because the leaf opened.
     }
 
     return true;
@@ -464,8 +852,24 @@ extern "C" bool VrDoor_GripConsumed(int32_t hand, uint16_t mask) {
 }
 
 extern "C" bool VrDoor_KeepPreviousRoomActors(void) {
-    return sDoor != nullptr && sRoomRequested && gPlayState != nullptr &&
+    const bool ordinaryDoorStreaming = sDoor != nullptr && sRoomRequested;
+    const bool bossDoorStreaming = (sBossCandidate != nullptr || sBossLatchDoor != nullptr) && sBossRoomRequested;
+    return (ordinaryDoorStreaming || bossDoorStreaming) && gPlayState != nullptr &&
            CVarGetInteger("gVrPhysicalDoors", 1) && VR_IsInitialized() && !VR_IsFlatScreen();
+}
+
+extern "C" int32_t VrDoor_EnvironmentBehaviorType2(PlayState* play) {
+    if (play != nullptr && sRoomRequested && !sPassageCommitted && play->roomCtx.prevRoom.num >= 0 &&
+        CVarGetInteger("gVrPhysicalDoors", 1) && VR_IsInitialized() && !VR_IsFlatScreen()) {
+        // Room_Request makes the preloaded destination curRoom immediately. Until Link actually
+        // crosses the doorway, environmental effects must still come from the room he occupies.
+        return play->roomCtx.prevRoom.behaviorType2;
+    }
+    if (play != nullptr && sBossRoomRequested && !sBossFullyOpen && play->roomCtx.prevRoom.num >= 0 &&
+        CVarGetInteger("gVrPhysicalDoors", 1) && VR_IsInitialized() && !VR_IsFlatScreen()) {
+        return play->roomCtx.prevRoom.behaviorType2;
+    }
+    return play != nullptr ? play->roomCtx.curRoom.behaviorType2 : 0;
 }
 
 extern "C" bool VrDoor_IsPhysicalActive(EnDoor* door) {
@@ -486,11 +890,29 @@ extern "C" bool VrDoor_StableFaceView(EnDoor* door, float* outPos3) {
 }
 
 extern "C" bool VrDoor_AllowsWallPass(Actor* actor, const float* nextPos3, const float* prevPos3) {
-    if (actor == nullptr || nextPos3 == nullptr || prevPos3 == nullptr || sDoor == nullptr || sHand >= 0 ||
-        gPlayState == nullptr || actor != &GET_PLAYER(gPlayState)->actor || !sRoomRequested ||
-        gPlayState->roomCtx.status != 0 || fabsf(sAngle * (360.0f / 65536.0f)) < kWalkThroughDeg) {
+    if (actor == nullptr || nextPos3 == nullptr || prevPos3 == nullptr || gPlayState == nullptr ||
+        actor != &GET_PLAYER(gPlayState)->actor) {
         return false;
     }
+    if (sBossLatchDoor != nullptr && sBossFullyOpen && sBossRoomRequested && gPlayState->roomCtx.status == 0) {
+        const float sn = Math_SinS(sBossLatchDoor->dyna.actor.shape.rot.y);
+        const float cs = Math_CosS(sBossLatchDoor->dyna.actor.shape.rot.y);
+        const float* points[2] = { nextPos3, prevPos3 };
+        for (int i = 0; i < 2; ++i) {
+            const float dx = points[i][0] - sBossLatchDoor->dyna.actor.world.pos.x;
+            const float dz = points[i][2] - sBossLatchDoor->dyna.actor.world.pos.z;
+            const float lateral = dx * cs - dz * sn;
+            const float across = dx * sn + dz * cs;
+            // Cover the full boss-door opening and a complete movement sweep, while remaining
+            // local enough that neighboring walls retain their collision.
+            if (fabsf(lateral) < 65.0f && fabsf(across) < 100.0f) return true;
+        }
+    }
+    if (sDoor == nullptr || sHand >= 0) return false;
+    const int type = (sDoor->actor.params >> 7) & 7;
+    const float requiredOpen = type == DOOR_SCENEEXIT ? kExitDeg : kWalkThroughDeg;
+    if ((type != DOOR_SCENEEXIT && (!sRoomRequested || gPlayState->roomCtx.status != 0)) ||
+        fabsf(sAngle * (360.0f / 65536.0f)) < requiredOpen) return false;
     float right[3], normal[3]; Axes(sDoor, right, normal);
     const float* points[2] = { nextPos3, prevPos3 };
     for (int i = 0; i < 2; ++i) {
@@ -516,15 +938,16 @@ extern "C" void VrDoor_ConstrainPlayerToLeaf(Actor* actor) {
 
     float right[3], normal[3]; Axes(sDoor, right, normal);
     const float handleX = CVarGetFloat("gVrDoorHandleRight", 23.0f);
-    const float hingeLocal = handleX >= 0.0f ? -kHalfWidth : kHalfWidth;
+    const float hingeOffset = HingeOffset();
+    const float hingeLocal = handleX >= 0.0f ? -hingeOffset : hingeOffset;
     const float leafDir = handleX >= 0.0f ? 1.0f : -1.0f;
     const float a = sAngle * (2.0f * M_PI / 65536.0f);
     const float hx = sDoor->actor.world.pos.x + right[0] * hingeLocal;
     const float hz = sDoor->actor.world.pos.z + right[2] * hingeLocal;
-    const float ex = hx + right[0] * (leafDir * 2.0f * kHalfWidth * cosf(a)) +
-                     normal[0] * (-leafDir * 2.0f * kHalfWidth * sinf(a));
-    const float ez = hz + right[2] * (leafDir * 2.0f * kHalfWidth * cosf(a)) +
-                     normal[2] * (-leafDir * 2.0f * kHalfWidth * sinf(a));
+    const float ex = hx + right[0] * (leafDir * 2.0f * hingeOffset * cosf(a)) +
+                     normal[0] * (-leafDir * 2.0f * hingeOffset * sinf(a));
+    const float ez = hz + right[2] * (leafDir * 2.0f * hingeOffset * cosf(a)) +
+                     normal[2] * (-leafDir * 2.0f * hingeOffset * sinf(a));
     const float sx = ex - hx, sz = ez - hz;
     const float lengthSq = sx * sx + sz * sz;
     if (lengthSq < 0.001f) return;

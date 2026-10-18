@@ -5,6 +5,7 @@
  */
 
 #include "z_door_shutter.h"
+#include "soh/Enhancements/vr-combat/VrCombat.h" // SOH [VR]
 #include "overlays/actors/ovl_Boss_Goma/z_boss_goma.h"
 
 #include "objects/object_gnd/object_gnd.h"
@@ -24,6 +25,7 @@
 #include "objects/object_demo_kekkai/object_demo_kekkai.h"
 #include "objects/object_ouke_haka/object_ouke_haka.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include <vr_interface.h>
 
 #define FLAGS ACTOR_FLAG_UPDATE_CULLING_DISABLED
 
@@ -386,6 +388,42 @@ void DoorShutter_Unopenable(DoorShutter* this, PlayState* play) {
 }
 
 void DoorShutter_Idle(DoorShutter* this, PlayState* play) {
+    // SOH [VR] Jabu's flesh shutter uses a two-hand spreading gesture. This only requests the
+    // native opening; all of the original lock, key and transition handling below remains intact.
+    s32 vrJabuOpen = (this->gfxType == 3) && VrJabuDoor_Tick(this, play);
+    s32 vrKeyOpen = VrKeys_TryShutter(this, play);
+    if (vrKeyOpen) {
+        // A physical key turn unlocks the shutter; it does not also activate it. In particular,
+        // the Boss Key must remove the padlock and leave the boss door closed until the player
+        // deliberately uses the now-unlocked door through its normal interaction path.
+        if (this->unlockTimer != 0) {
+            Flags_SetSwitch(play, this->dyna.actor.params & 0x3F);
+            if (this->doorType != SHUTTER_BOSS) {
+                if (GameInteractor_Should(VB_CONSUME_SMALL_KEY, true, this)) {
+                    gSaveContext.inventory.dungeonKeys[gSaveContext.mapIndex]--;
+                }
+                Audio_PlayActorSound2(&this->dyna.actor, NA_SE_EV_CHAIN_KEY_UNLOCK);
+                GameInteractor_ExecuteOnDungeonKeyUsedHooks(gSaveContext.mapIndex);
+            } else {
+                Audio_PlayActorSound2(&this->dyna.actor, NA_SE_EV_CHAIN_KEY_UNLOCK_B);
+            }
+            this->unlockTimer = 0;
+        }
+        this->unk_164 = 0;
+        GET_PLAYER(play)->doorTimer = 0;
+        GET_PLAYER(play)->doorActor = NULL;
+        return;
+    }
+    s32 vrBossDoor = (this->doorType == SHUTTER_BOSS && this->unlockTimer == 0)
+                         ? VrBossDoor_Tick(this, play)
+                         : 0;
+    if (vrBossDoor == 2) {
+        DoorShutter_SetupAction(this, DoorShutter_Open);
+        return;
+    }
+    if (vrBossDoor == 1) {
+        return;
+    }
     if (this->unk_164 != 0) {
         DoorShutter_SetupAction(this, DoorShutter_Open);
         this->dyna.actor.velocity.y = 0.0f;
@@ -417,6 +455,10 @@ void DoorShutter_Idle(DoorShutter* this, PlayState* play) {
                     }
                     player->doorTimer = 10;
                 }
+                if (vrJabuOpen) {
+                    this->unk_164 = 1;
+                    return;
+                }
                 player->doorType = PLAYER_DOORTYPE_SLIDING;
                 player->doorDirection = doorDirection;
                 player->doorActor = &this->dyna.actor;
@@ -437,8 +479,12 @@ void DoorShutter_InitOpeningDoorCam(DoorShutter* this, PlayState* play) {
         DoorShutter_SetupAction(this, DoorShutter_Open);
         this->gfxType = sp38;
         this->barsClosedAmount = 0.0f;
-        Camera_ChangeDoorCam(play->cameraPtrs[CAM_ID_MAIN], &this->dyna.actor, player->cv.slidingDoorBgCamIndex, 0.0f,
-                             12, sp34, 10);
+        // A forced third-person door camera rotates the world around a first-person VR player.
+        // Keep the stock camera transition everywhere except active first-person VR.
+        if (!(VR_IsInitialized() && VR_GetFirstPerson() && !VR_IsFlatScreen())) {
+            Camera_ChangeDoorCam(play->cameraPtrs[CAM_ID_MAIN], &this->dyna.actor,
+                                 player->cv.slidingDoorBgCamIndex, 0.0f, 12, sp34, 10);
+        }
     }
 }
 
@@ -449,7 +495,8 @@ s32 DoorShutter_UpdateOpening(DoorShutter* this, PlayState* play) {
             DoorShutter_InitOpeningDoorCam(this, play);
         }
         Math_StepToF(&this->dyna.actor.velocity.y, 15.0f, 3.0f);
-        if (Math_StepToF(&this->dyna.actor.world.pos.y, this->dyna.actor.home.pos.y + 200.0f,
+        if (Math_StepToF(&this->dyna.actor.world.pos.y,
+                         this->dyna.actor.home.pos.y + VrBossDoor_OpenHeight(this),
                          this->dyna.actor.velocity.y)) {
             return true;
         }
@@ -513,6 +560,9 @@ void DoorShutter_UnbarredCheckSwitchFlag(DoorShutter* this, PlayState* play) {
 
 void DoorShutter_Open(DoorShutter* this, PlayState* play) {
     if (DECR(this->unlockTimer) == 0 && play->roomCtx.status == 0 && DoorShutter_UpdateOpening(this, play) != 0) {
+        if (VrBossDoor_KeepOpen(this, play)) {
+            return;
+        }
         if (((this->doorType == SHUTTER_BOSS) ? 20.0f : 50.0f) < this->dyna.actor.xzDistToPlayer) {
             if (DoorShutter_SetupDoor(this, play)) {
                 this->dyna.actor.velocity.y = 30.0f;

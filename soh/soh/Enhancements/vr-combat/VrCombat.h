@@ -578,24 +578,47 @@ void VrBlock_GetDebug(VrBlockDebug* out);
 struct EnDoor;
 bool VrDoor_Tick(struct EnDoor* door, struct PlayState* play);
 bool VrDoor_GripConsumed(int32_t hand, uint16_t mask);
+// Jabu-Jabu's radial flesh shutter opens by gripping opposite sides and spreading both hands.
+// Tick returns true once the spread is wide enough; the native shutter code remains responsible
+// for locks, switches, opening animation and room transition.
+struct DoorShutter;
+bool VrJabuDoor_Tick(struct DoorShutter* door, struct PlayState* play);
+bool VrJabuDoor_GripConsumed(int32_t hand, uint16_t mask);
+// An unlocked boss shutter can be gripped on both halves and physically lifted in VR.
+// 0 = inactive, 1 = owns the door/grips, 2 = fully raised.
+int32_t VrBossDoor_Tick(struct DoorShutter* door, struct PlayState* play);
+bool VrBossDoor_GripConsumed(int32_t hand, uint16_t mask);
+// While latched, the hand is rendered as a bare closed fist instead of its equipped weapon/shield.
+bool VrBossDoor_HoldsHand(int32_t hand);
+bool VrBossDoor_KeepOpen(struct DoorShutter* door, struct PlayState* play);
+float VrBossDoor_OpenHeight(struct DoorShutter* door);
+bool VrBossDoor_PinnedHandMatrix(struct Player* player, int32_t hand, float* mf16);
 // Suppresses only the player's wall sweep inside the centre of a sufficiently open physical doorway.
 bool VrDoor_AllowsWallPass(struct Actor* actor, const float* nextPos3, const float* prevPos3);
 // Replaces the removed closed-door wall with a player-only collider along the rotated physical leaf.
 void VrDoor_ConstrainPlayerToLeaf(struct Actor* actor);
 // During physical-door streaming, room object banks are merged so prevRoom actors keep their assets.
 bool VrDoor_KeepPreviousRoomActors(void);
+int32_t VrDoor_EnvironmentBehaviorType2(struct PlayState* play);
 // Supplies a stable virtual viewpoint for EnDoor's front/back display-list choice near the leaf.
 bool VrDoor_StableFaceView(struct EnDoor* door, float* outPos3);
 bool VrDoor_IsPhysicalActive(struct EnDoor* door);
 // While a handle is held, pin the rendered hand to the point it took hold on the moving leaf.
 // The physical controller continues to drive the door, but cannot visually stretch away from it.
 bool VrDoor_PinnedHandMatrix(struct Player* player, int32_t hand, float* mf16);
-// Physical dungeon keys (VrKeys.cpp). Phase one presents inventory keys at the left wrist HUD;
-// holding/releasing never changes inventory. Door insertion and consumption belong to phase two.
+// Physical dungeon keys (VrKeys.cpp). Two-dimensional inventory icons on the left wrist can be
+// grabbed to create a held key; compatible vanilla locks remain responsible for consuming it.
 void VrKeys_Tick(struct PlayState* play, struct Player* player);
 bool VrKeys_GripConsumed(int32_t hand, uint16_t mask);
 bool VrKeys_HoldsHand(int32_t hand);
+// True while the grabbing hand is inside this wrist key's visible card (bossKey: 0 small, 1 boss).
+bool VrKeys_HudHighlighted(int32_t bossKey);
 void VrKeys_Reset(void);
+// Returns true after the held physical key has been aligned with and pushed through this lock.
+struct EnDoor;
+struct DoorShutter;
+bool VrKeys_TryEnDoor(struct EnDoor* door, struct PlayState* play);
+bool VrKeys_TryShutter(struct DoorShutter* door, struct PlayState* play);
 // Small body collider (VrBody.cpp, gVrSmallBody — VR first person with roomscale). Link's body keeps
 // the vanilla wall radius for everything; the view (and the hands on the same anchor) is a small
 // circle (gVrSmallBodyRadiusCm) living inside that big circle, so it can get closer to walls than the
