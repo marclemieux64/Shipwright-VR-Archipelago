@@ -345,13 +345,14 @@ void PadMgr_HandleRetraceMsg(PadMgr* padMgr) {
             //           right = B-sword, none, A, C-down, none, none.
             // C-Up ships deliberately UNBOUND — ocarina notes come from the dedicated OCARINA
             // set below, so no gameplay binding needs to carry a note.
-            static const char* sVrBindCvars[2][6] = {
+            // Extra face/D-pad and shoulder inputs start unbound; existing six defaults are unchanged.
+            static const char* sVrBindCvars[2][VR_BUTTON_COUNT] = {
                 { "gVrBindLTrigger", "gVrBindLGrip", "gVrBindLPrimary", "gVrBindLSecondary", "gVrBindLStickClick",
-                  "gVrBindLMenu" },
+                  "gVrBindLMenu", "gVrBindLExtra1", "gVrBindLExtra2", "gVrBindLShoulder" },
                 { "gVrBindRTrigger", "gVrBindRGrip", "gVrBindRPrimary", "gVrBindRSecondary", "gVrBindRStickClick",
-                  "gVrBindRMenu" },
+                  "gVrBindRMenu", "gVrBindRExtra1", "gVrBindRExtra2", "gVrBindRShoulder" },
             };
-            static const s32 sVrBindDefaults[2][6] = {
+            static const s32 sVrBindDefaults[2][VR_BUTTON_COUNT] = {
                 { BTN_Z, BTN_R, BTN_CLEFT, BTN_CRIGHT, BTN_START, 0 },
                 { BTN_B, 0, BTN_A, BTN_CDOWN, 0, 0 },
             };
@@ -365,13 +366,13 @@ void PadMgr_HandleRetraceMsg(PadMgr* padMgr) {
             // button, because whichever stick click the selector is set to is eaten by it.
             // Keep in sync with sVrInputDefsSelector in SohMenuVRSettings.cpp. The triggers have
             // no CVar (NULL): VrItemSelect_TriggerConsumed always takes them in this set.
-            static const char* sVrBindSelCvars[2][6] = {
+            static const char* sVrBindSelCvars[2][VR_BUTTON_COUNT] = {
                 { NULL, "gVrBindSelLGrip", "gVrBindSelLPrimary", "gVrBindSelLSecondary", "gVrBindSelLStickClick",
-                  "gVrBindSelLMenu" },
+                  "gVrBindSelLMenu", "gVrBindSelLExtra1", "gVrBindSelLExtra2", "gVrBindSelLShoulder" },
                 { NULL, "gVrBindSelRGrip", "gVrBindSelRPrimary", "gVrBindSelRSecondary", "gVrBindSelRStickClick",
-                  "gVrBindSelRMenu" },
+                  "gVrBindSelRMenu", "gVrBindSelRExtra1", "gVrBindSelRExtra2", "gVrBindSelRShoulder" },
             };
-            static const s32 sVrBindSelDefaults[2][6] = {
+            static const s32 sVrBindSelDefaults[2][VR_BUTTON_COUNT] = {
                 { 0, BTN_R, 0, 0, BTN_START, BTN_START },
                 { 0, BTN_Z, BTN_A, BTN_B, 0, 0 },
             };
@@ -386,13 +387,15 @@ void PadMgr_HandleRetraceMsg(PadMgr* padMgr) {
             // left grip; B (put the ocarina away) = B button; triggers, X and Y unbound. Pitch
             // bend rides the left thumbstick, which is already the N64 analog stick below. Keep in
             // sync with sVrInputDefsOcarina in SohMenuVRSettings.cpp.
-            static const char* sVrBindOcaCvars[2][6] = {
+            static const char* sVrBindOcaCvars[2][VR_BUTTON_COUNT] = {
                 { "gVrBindOcaLTrigger", "gVrBindOcaLGrip", "gVrBindOcaLPrimary", "gVrBindOcaLSecondary",
-                  "gVrBindOcaLStickClick", "gVrBindOcaLMenu" },
+                  "gVrBindOcaLStickClick", "gVrBindOcaLMenu",
+                  "gVrBindOcaLExtra1", "gVrBindOcaLExtra2", "gVrBindOcaLShoulder" },
                 { "gVrBindOcaRTrigger", "gVrBindOcaRGrip", "gVrBindOcaRPrimary", "gVrBindOcaRSecondary",
-                  "gVrBindOcaRStickClick", "gVrBindOcaRMenu" },
+                  "gVrBindOcaRStickClick", "gVrBindOcaRMenu",
+                  "gVrBindOcaRExtra1", "gVrBindOcaRExtra2", "gVrBindOcaRShoulder" },
             };
-            static const s32 sVrBindOcaDefaults[2][6] = {
+            static const s32 sVrBindOcaDefaults[2][VR_BUTTON_COUNT] = {
                 { 0, BTN_Z, 0, 0, 0, 0 },
                 { 0, BTN_R, BTN_A, BTN_B, 0, 0 },
             };
@@ -413,8 +416,9 @@ void PadMgr_HandleRetraceMsg(PadMgr* padMgr) {
                 { 0, 0, 0, 0 },
                 { BTN_CUP, BTN_CDOWN, BTN_CLEFT, BTN_CRIGHT },
             };
-            static const u16 sVrBtnMasks[6] = { VR_BTN_TRIGGER,   VR_BTN_GRIP,       VR_BTN_PRIMARY,
-                                                VR_BTN_SECONDARY, VR_BTN_THUMBCLICK, VR_BTN_MENU };
+            static const u16 sVrBtnMasks[VR_BUTTON_COUNT] = { VR_BTN_TRIGGER,   VR_BTN_GRIP,       VR_BTN_PRIMARY,
+                                                VR_BTN_SECONDARY, VR_BTN_THUMBCLICK, VR_BTN_MENU,
+                                                VR_BTN_EXTRA1, VR_BTN_EXTRA2, VR_BTN_SHOULDER };
             s32 vrSelProfile = CVarGetInteger("gVrItemSelect", 1);
             s32 vrOcarina = VrOcarina_InPlay();
             s32 vrHandIdx, vrBtnIdx;
@@ -429,7 +433,7 @@ void PadMgr_HandleRetraceMsg(PadMgr* padMgr) {
             s32 vrPageLeftBtn = CVarGetInteger(CVAR_ENHANCEMENT("NGCKaleidoSwitcher"), 0) ? BTN_L : BTN_Z;
             for (vrHandIdx = 0; vrHandIdx < 2; vrHandIdx++) {
                 uint16_t vrState = (vrHandIdx == 0) ? vrL : vrR;
-                for (vrBtnIdx = 0; vrBtnIdx < 6; vrBtnIdx++) {
+                for (vrBtnIdx = 0; vrBtnIdx < VR_BUTTON_COUNT; vrBtnIdx++) {
                     if (vrPauseMenu && !vrOcarina && (sVrBtnMasks[vrBtnIdx] == VR_BTN_GRIP)) {
                         if (vrState & VR_BTN_GRIP) {
                             vrPad->button |= (vrHandIdx == VR_HAND_LEFT) ? vrPageLeftBtn : BTN_R;

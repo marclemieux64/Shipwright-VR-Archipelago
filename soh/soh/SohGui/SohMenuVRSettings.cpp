@@ -2,6 +2,7 @@
 #include "SohGui.hpp"
 #include <libultraship/bridge/consolevariablebridge.h>
 #include <imgui.h>
+#include <spdlog/spdlog.h>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -94,27 +95,45 @@ static const VrInputDef sVrInputDefsClassic[] = {
     { "L Trigger", "gVrBindLTrigger", BTN_Z },      { "L Grip", "gVrBindLGrip", BTN_R },
     { "X", "gVrBindLPrimary", BTN_CLEFT },          { "Y", "gVrBindLSecondary", BTN_CRIGHT },
     { "L Stick", "gVrBindLStickClick", BTN_START }, { "L Menu", "gVrBindLMenu", 0 },
+    { "L D-pad Left", "gVrBindLExtra1", 0 },
+    { "L D-pad Right", "gVrBindLExtra2", 0 },
+    { "L Shoulder", "gVrBindLShoulder", 0 },
     { "R Trigger", "gVrBindRTrigger", BTN_B },      { "R Grip", "gVrBindRGrip", 0 },
     { "A", "gVrBindRPrimary", BTN_A },              { "B", "gVrBindRSecondary", BTN_CDOWN },
     { "R Stick", "gVrBindRStickClick", 0 },         { "R Menu", "gVrBindRMenu", 0 },
+    { "R X", "gVrBindRExtra1", 0 },
+    { "R Y", "gVrBindRExtra2", 0 },
+    { "R Shoulder", "gVrBindRShoulder", 0 },
 };
 static const VrInputDef sVrInputDefsSelector[] = {
     { "L Trigger", nullptr, 0 },                           { "L Grip", "gVrBindSelLGrip", BTN_R },
     { "X", "gVrBindSelLPrimary", 0 },                      { "Y", "gVrBindSelLSecondary", 0 },
     { "L Stick", "gVrBindSelLStickClick", BTN_START },     { "L Menu", "gVrBindSelLMenu", BTN_START },
+    { "L D-pad Left", "gVrBindSelLExtra1", 0 },
+    { "L D-pad Right", "gVrBindSelLExtra2", 0 },
+    { "L Shoulder", "gVrBindSelLShoulder", 0 },
     { "R Trigger", nullptr, 0 },                           { "R Grip", "gVrBindSelRGrip", BTN_Z },
     { "A", "gVrBindSelRPrimary", BTN_A },                  { "B", "gVrBindSelRSecondary", BTN_B },
     { "R Stick", "gVrBindSelRStickClick", 0 },             { "R Menu", "gVrBindSelRMenu", 0 },
+    { "R X", "gVrBindSelRExtra1", 0 },
+    { "R Y", "gVrBindSelRExtra2", 0 },
+    { "R Shoulder", "gVrBindSelRShoulder", 0 },
 };
 static const VrInputDef sVrInputDefsOcarina[] = {
     { "L Trigger", "gVrBindOcaLTrigger", 0 },         { "L Grip", "gVrBindOcaLGrip", BTN_Z },
     { "X", "gVrBindOcaLPrimary", 0 },                 { "Y", "gVrBindOcaLSecondary", 0 },
     { "L Stick", "gVrBindOcaLStickClick", 0 },        { "L Menu", "gVrBindOcaLMenu", 0 },
+    { "L D-pad Left", "gVrBindOcaLExtra1", 0 },
+    { "L D-pad Right", "gVrBindOcaLExtra2", 0 },
+    { "L Shoulder", "gVrBindOcaLShoulder", 0 },
     { "R Trigger", "gVrBindOcaRTrigger", 0 },         { "R Grip", "gVrBindOcaRGrip", BTN_R },
     { "A", "gVrBindOcaRPrimary", BTN_A },             { "B", "gVrBindOcaRSecondary", BTN_B },
     { "R Stick", "gVrBindOcaRStickClick", 0 },        { "R Menu", "gVrBindOcaRMenu", 0 },
-    // Stick DIRECTIONS, bindable in the ocarina set only (indices 12+, order up/down/left/right
-    // per hand — the listener below computes 12 + hand * 4 + dir). A hand with any direction
+    { "R X", "gVrBindOcaRExtra1", 0 },
+    { "R Y", "gVrBindOcaRExtra2", 0 },
+    { "R Shoulder", "gVrBindOcaRShoulder", 0 },
+    // Stick DIRECTIONS, bindable in the ocarina set only (indices 18+, order up/down/left/right
+    // per hand — the listener below computes kVrButtonInputCount + hand * 4 + dir). A hand with any direction
     // bound claims that whole stick while playing: its stock job (left: pitch bend; right:
     // third-person C-stick) stands down. Matches sVrBindOcaStickCvars in padmgr.c.
     { "L Stick " ICON_FA_ARROW_UP, "gVrBindOcaLStickUp", 0 },
@@ -126,8 +145,12 @@ static const VrInputDef sVrInputDefsOcarina[] = {
     { "R Stick " ICON_FA_ARROW_LEFT, "gVrBindOcaRStickLeft", BTN_CLEFT },
     { "R Stick " ICON_FA_ARROW_RIGHT, "gVrBindOcaRStickRight", BTN_CRIGHT },
 };
-static const int kVrButtonInputCount = 12;
-static const int kVrOcarinaInputCount = 20; // buttons + the 8 stick directions
+static const int kVrButtonInputCount = 2 * VR_BUTTON_COUNT;
+static const int kVrOcarinaInputCount = kVrButtonInputCount + 8; // buttons + the 8 stick directions
+
+static_assert(IM_ARRAYSIZE(sVrInputDefsClassic) == kVrButtonInputCount);
+static_assert(IM_ARRAYSIZE(sVrInputDefsSelector) == kVrButtonInputCount);
+static_assert(IM_ARRAYSIZE(sVrInputDefsOcarina) == kVrOcarinaInputCount);
 
 // Which set the editor is showing: the active gameplay scheme, or the ocarina set.
 static bool sVrEditOcarina = false;
@@ -144,6 +167,21 @@ static const VrInputDef* VrInputDefs() {
 static int VrInputCount() {
     return sVrEditOcarina ? kVrOcarinaInputCount : kVrButtonInputCount;
 }
+// Frame has four independent face inputs per hand. Reuse existing primary/secondary CVars
+// for left down/up and right A/B; the additional buttons have their own zero-default CVars.
+static const char* VrInputLabel(int idx) {
+    if (idx < kVrButtonInputCount && VR_IsFrameController(idx / VR_BUTTON_COUNT)) {
+        const int hand = idx / VR_BUTTON_COUNT;
+        const int button = idx % VR_BUTTON_COUNT;
+        if (hand == VR_HAND_LEFT) {
+            if (button == 2) return "L D-pad Down";
+            if (button == 3) return "L D-pad Up";
+            if (button == 5) return "L View";
+        }
+    }
+    return VrInputDefs()[idx].label;
+}
+
 // Dominant-axis stick direction: 0 up, 1 down, 2 left, 3 right, -1 centered. Must match the
 // firing logic in padmgr.c so what binds here is what plays there.
 static int VrStickDir(float x, float y) {
@@ -152,11 +190,11 @@ static int VrStickDir(float x, float y) {
     }
     return (x < -0.5f) ? 2 : (x > 0.5f) ? 3 : -1;
 }
-// Indices 0 and 6 are the two triggers: reserved by selector mode, so they are not bindable —
+// The first slot of each hand is its trigger: reserved by selector mode, so they are not bindable —
 // except in the ocarina set, where the reservations don't apply and triggers are prime note real
 // estate.
 static bool VrInputReserved(int idx) {
-    return !sVrEditOcarina && VrSelectorProfile() && ((idx == 0) || (idx == 6));
+    return !sVrEditOcarina && VrSelectorProfile() && ((idx == 0) || (idx == VR_BUTTON_COUNT));
 }
 
 struct VrN64RowDef {
@@ -192,7 +230,7 @@ static void VrInputBindingRow(const VrN64RowDef& row) {
             ImGui::SameLine();
             ImGui::PushID(input.cvar);
             char chip[48];
-            snprintf(chip, sizeof(chip), "%s %s x", ICON_FA_GAMEPAD, input.label);
+            snprintf(chip, sizeof(chip), "%s %s x", ICON_FA_GAMEPAD, VrInputLabel(i));
             if (ImGui::SmallButton(chip)) {
                 CVarSetInteger(input.cvar, cur & ~row.mask);
                 CVarSave();
@@ -218,21 +256,29 @@ static void VrInputBindingRow(const VrN64RowDef& row) {
         if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
             sVrListenRowMask = 0;
         }
-        static const uint16_t sVrBtnBits[6] = { VR_BTN_TRIGGER,   VR_BTN_GRIP,       VR_BTN_PRIMARY,
-                                                VR_BTN_SECONDARY, VR_BTN_THUMBCLICK, VR_BTN_MENU };
+        static const uint16_t sVrBtnBits[VR_BUTTON_COUNT] = { VR_BTN_TRIGGER,   VR_BTN_GRIP,       VR_BTN_PRIMARY,
+                                                VR_BTN_SECONDARY, VR_BTN_THUMBCLICK, VR_BTN_MENU,
+                                                VR_BTN_EXTRA1, VR_BTN_EXTRA2, VR_BTN_SHOULDER };
         for (int hand = 0; hand < 2 && sVrListenRowMask != 0; hand++) {
-            uint16_t curBtn = VR_GetControllerButton(hand);
+            uint16_t curBtn = VR_GetBindingButtons(hand);
             uint16_t pressed = curBtn & ~sVrListenPrevBtn[hand];
+            if (curBtn != sVrListenPrevBtn[hand]) {
+                spdlog::info("[VR Bind] hand={} previous={} current={} pressed={} gameplay={}",
+                             hand, sVrListenPrevBtn[hand], curBtn, pressed, VR_GetControllerButton(hand));
+            }
             sVrListenPrevBtn[hand] = curBtn;
-            for (int b = 0; b < 6; b++) {
+            for (int b = 0; b < VR_BUTTON_COUNT; b++) {
                 if (pressed & sVrBtnBits[b]) {
-                    const int idx = hand * 6 + b;
+                    const int idx = hand * VR_BUTTON_COUNT + b;
                     if (VrInputReserved(idx)) {
+                        spdlog::info("[VR Bind] Ignored reserved input hand={} bit={}", hand, b);
                         continue; // reserved for using the held item — keep listening
                     }
                     const VrInputDef& input = VrInputDefs()[idx];
                     CVarSetInteger(input.cvar, CVarGetInteger(input.cvar, input.defaultMask) | row.mask);
                     CVarSave();
+                    spdlog::info("[VR Bind] Saved {}={} row={}", input.cvar,
+                                 CVarGetInteger(input.cvar, input.defaultMask), row.mask);
                     sVrListenRowMask = 0;
                     break;
                 }
@@ -242,14 +288,16 @@ static void VrInputBindingRow(const VrN64RowDef& row) {
         // threshold binds this row to that direction.
         for (int hand = 0; sVrEditOcarina && hand < 2 && sVrListenRowMask != 0; hand++) {
             float sx = 0.0f, sy = 0.0f;
-            VR_GetThumbstick(hand, &sx, &sy);
+            VR_GetBindingThumbstick(hand, &sx, &sy);
             const int dir = VrStickDir(sx, sy);
             const bool fresh = (dir >= 0) && (dir != sVrListenPrevStickDir[hand]);
             sVrListenPrevStickDir[hand] = dir;
             if (fresh) {
-                const VrInputDef& input = VrInputDefs()[12 + hand * 4 + dir];
+                const VrInputDef& input = VrInputDefs()[kVrButtonInputCount + hand * 4 + dir];
                 CVarSetInteger(input.cvar, CVarGetInteger(input.cvar, input.defaultMask) | row.mask);
                 CVarSave();
+                spdlog::info("[VR Bind] Saved {}={} row={}", input.cvar,
+                             CVarGetInteger(input.cvar, input.defaultMask), row.mask);
                 sVrListenRowMask = 0;
             }
         }
@@ -262,9 +310,12 @@ static void VrInputBindingRow(const VrN64RowDef& row) {
             if (VR_IsInitialized()) {
                 sVrListenRowMask = row.mask;
                 for (int hand = 0; hand < 2; hand++) {
-                    sVrListenPrevBtn[hand] = VR_GetControllerButton(hand);
+                    sVrListenPrevBtn[hand] = VR_GetBindingButtons(hand);
+                    spdlog::info("[VR Bind] Begin row={} ocarina={} selector={} hand={} held={} gameplay={}",
+                                 row.mask, sVrEditOcarina, VrSelectorProfile(), hand,
+                                 sVrListenPrevBtn[hand], VR_GetControllerButton(hand));
                     float sx = 0.0f, sy = 0.0f;
-                    VR_GetThumbstick(hand, &sx, &sy);
+                    VR_GetBindingThumbstick(hand, &sx, &sy);
                     sVrListenPrevStickDir[hand] = VrStickDir(sx, sy);
                 }
             } else {
@@ -284,7 +335,7 @@ static void VrInputBindingRow(const VrN64RowDef& row) {
                 const VrInputDef& input = VrInputDefs()[i];
                 int32_t cur = CVarGetInteger(input.cvar, input.defaultMask);
                 if (!(cur & row.mask)) {
-                    if (ImGui::MenuItem(input.label)) {
+                    if (ImGui::MenuItem(VrInputLabel(i))) {
                         CVarSetInteger(input.cvar, cur | row.mask);
                         CVarSave();
                     }
