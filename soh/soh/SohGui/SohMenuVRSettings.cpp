@@ -2876,10 +2876,10 @@ void SohMenu::AddMenuVRSettings() {
                      .Max(16)
                      .DefaultValue(4)
                      .Format("%d")
-                     .Tooltip("How often the desktop window is updated, in frames. Each update "
-                              "costs an ImGui frame, a full-eye-resolution mirror copy and a "
-                              "Present, all on the critical path. 4 gives roughly 30 fps on the "
-                              "monitor at a 120 Hz headset. This menu updates at that rate too."));
+                     .Tooltip("How often a newly rendered eye is copied into the desktop streaming mirror. "
+                              "The desktop swapchain still advances every frame for stable OpenXR/DXGI and "
+                              "audio pacing; skipped copies repeat the previous mirror image. 2 gives roughly "
+                              "60 unique mirror frames per second with a 120 Hz headset."));
     AddWidget(perfPath, "Render Resolution Scale: %.2f", WIDGET_CVAR_SLIDER_FLOAT)
         .CVar("gVrResolutionScale")
         .Options(FloatSliderOptions()
