@@ -519,6 +519,19 @@ if(MSVC)
         soh/Enhancements/randomizer/option.cpp
         PROPERTIES COMPILE_OPTIONS "$<$<CONFIG:Release>:/Od>"
     )
+    # The restored Archipelago client predates the x64 target's /WX policy and intentionally
+    # crosses ImGui/AP protocol integer-width boundaries. Keep those known conversion warnings
+    # local to the imported integration (and websocketpp templates) instead of weakening /WX for
+    # the rest of the game.
+    set_source_files_properties(
+        soh/Enhancements/randomizer/hook_handlers.cpp
+        soh/Network/Archipelago/Archipelago.cpp
+        soh/Network/Archipelago/ArchipelagoConsoleWindow.cpp
+        soh/Network/Archipelago/ArchipelagoHintWindow.cpp
+        soh/Network/Archipelago/ItemSuggestionTrie.cpp
+        soh/Notification/Notification.cpp
+        PROPERTIES COMPILE_OPTIONS "/wd4101;/wd4244;/wd4267;/wd4305"
+    )
 endif()
 
 ################################################################################
