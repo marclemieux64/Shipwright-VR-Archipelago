@@ -60,10 +60,29 @@ bool HasSmall() {
     return map >= 0 && map < (int)ARRAY_COUNT(gSaveContext.inventory.dungeonKeys) &&
            gSaveContext.inventory.dungeonKeys[map] > 0;
 }
-bool HasBoss() {
+bool OwnsBoss() {
     const int map = gSaveContext.mapIndex;
     return map >= 0 && map < (int)ARRAY_COUNT(gSaveContext.inventory.dungeonItems) &&
            CHECK_DUNGEON_ITEM(DUNGEON_KEY_BOSS, map);
+}
+
+bool HasLockedBossDoorNearby(PlayState* play) {
+    if (play == nullptr || !OwnsBoss()) return false;
+
+    const Player* player = GET_PLAYER(play);
+    constexpr float kAvailabilityRadius = 400.0f;
+    constexpr float kAvailabilityRadiusSq = kAvailabilityRadius * kAvailabilityRadius;
+    for (Actor* actor = play->actorCtx.actorLists[ACTORCAT_DOOR].head; actor != nullptr; actor = actor->next) {
+        if (actor->id != ACTOR_DOOR_SHUTTER || actor->update == nullptr) continue;
+        DoorShutter* door = reinterpret_cast<DoorShutter*>(actor);
+        if (door->doorType != SHUTTER_BOSS || door->unlockTimer == 0) continue;
+
+        const float dx = actor->world.pos.x - player->actor.world.pos.x;
+        const float dy = actor->world.pos.y - player->actor.world.pos.y;
+        const float dz = actor->world.pos.z - player->actor.world.pos.z;
+        if (dx * dx + dy * dy + dz * dz <= kAvailabilityRadiusSq) return true;
+    }
+    return false;
 }
 
 bool HandNear(int hand, const float point[3]) {
@@ -264,7 +283,7 @@ extern "C" bool VrKeys_TryEnDoor(EnDoor* door, PlayState* play) {
 extern "C" bool VrKeys_TryShutter(DoorShutter* door, PlayState* play) {
     if (play == nullptr || door == nullptr || door->unlockTimer == 0) return false;
     if (door->doorType == SHUTTER_BOSS) {
-        return HasBoss() && TryInsert(&door->dyna.actor, 80.0f, Kind::Boss);
+        return OwnsBoss() && TryInsert(&door->dyna.actor, 80.0f, Kind::Boss);
     }
     return door->doorType == SHUTTER_KEY_LOCKED && HasSmall() &&
            TryInsert(&door->dyna.actor, door->gfxType == 6 ? 80.0f : 50.0f, Kind::Small);
@@ -287,12 +306,16 @@ extern "C" bool VrKeys_HudHighlighted(int32_t bossKey) {
     return sNearKind == (bossKey ? Kind::Boss : Kind::Small);
 }
 
+extern "C" bool VrKeys_BossAvailable(PlayState* play) {
+    return HasLockedBossDoorNearby(play);
+}
+
 extern "C" void VrKeys_Tick(PlayState* play, Player* player) {
     if (!Gate(play, player)) {
         VrKeys_Reset();
         return;
     }
-    if ((sHeld == Kind::Small && !HasSmall()) || (sHeld == Kind::Boss && !HasBoss())) Clear();
+    if ((sHeld == Kind::Small && !HasSmall()) || (sHeld == Kind::Boss && !HasLockedBossDoorNearby(play))) Clear();
     bool pressed[2], released[2];
     for (int h = 0; h < 2; ++h) {
         const bool grip = (VR_GetControllerButton(h) & VR_BTN_GRIP) != 0;
@@ -337,7 +360,8 @@ extern "C" void VrKeys_Tick(PlayState* play, Player* player) {
         }
         return;
     }
-    const Kind available[2] = { HasSmall() ? Kind::Small : Kind::None, HasBoss() ? Kind::Boss : Kind::None };
+    const Kind available[2] = { HasSmall() ? Kind::Small : Kind::None,
+                                HasLockedBossDoorNearby(play) ? Kind::Boss : Kind::None };
     for (Kind kind : available) {
         if (kind == Kind::None) continue;
         // The key lives on the left wrist HUD, so the right hand takes it. Letting the wrist's own

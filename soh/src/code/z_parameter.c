@@ -5514,9 +5514,7 @@ void Interface_Draw(PlayState* play) {
             // SOH [VR] Boss Key is a separate wrist-HUD element so its visible icon is also its
             // exact physical grab target. The wrist packer places it beside the Small Key card.
             if (VR_IsInitialized() && CVarGetInteger("gVrPhysicalKeys", 1) &&
-                gSaveContext.mapIndex >= 0 &&
-                gSaveContext.mapIndex < ARRAY_COUNT(gSaveContext.inventory.dungeonItems) &&
-                CHECK_DUNGEON_ITEM(DUNGEON_KEY_BOSS, gSaveContext.mapIndex)) {
+                VrKeys_BossAvailable(play)) {
                 Interface_VrHudGroup(play, VR_HUD_EL_PHYSICAL_BOSS_KEY, interfaceCtx->magicAlpha);
                 gDPPipeSync(OVERLAY_DISP++);
                 gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
