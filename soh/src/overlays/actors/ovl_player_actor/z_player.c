@@ -8575,6 +8575,9 @@ void func_8084BEE4(Player* this);
 // (func_8083F360) holds him at ageProperties->unk_3C (15); here the arms set it. < 0 = not climbing
 // by hand.
 static f32 sVrClimbWallDist = -1.0f;
+// +1 when Link holds the authored front of the polygon, -1 when a two-sided/dynamic climbable is
+// approached from its back. All physical-climb plane math uses an effective normal toward Link.
+static f32 sVrClimbWallSide = 1.0f;
 // How far toward the wall the view was last allowed to run ahead of the body between ticks
 // (Player_VrClimbPublishLimits). < 0 = no limit published yet: the view follows the hand fully.
 static f32 sVrClimbViewIn = -1.0f;
@@ -8587,9 +8590,9 @@ static s32 Player_VrClimbWallNormal(Player* this, f32 n[3]) {
     if (poly == NULL) {
         return false;
     }
-    n[0] = COLPOLY_GET_NORMAL(poly->normal.x);
+    n[0] = COLPOLY_GET_NORMAL(poly->normal.x) * sVrClimbWallSide;
     n[1] = 0.0f;
-    n[2] = COLPOLY_GET_NORMAL(poly->normal.z);
+    n[2] = COLPOLY_GET_NORMAL(poly->normal.z) * sVrClimbWallSide;
     len = sqrtf(SQ(n[0]) + SQ(n[2]));
     if (len < 0.001f) {
         return false;
@@ -8606,8 +8609,9 @@ static f32 Player_VrClimbPlaneDist(Player* this, f32 x, f32 y, f32 z) {
     if (poly == NULL) {
         return 0.0f;
     }
-    return (COLPOLY_GET_NORMAL(poly->normal.x) * x) + (COLPOLY_GET_NORMAL(poly->normal.y) * y) +
-           (COLPOLY_GET_NORMAL(poly->normal.z) * z) + poly->dist;
+    return ((COLPOLY_GET_NORMAL(poly->normal.x) * x) + (COLPOLY_GET_NORMAL(poly->normal.y) * y) +
+            (COLPOLY_GET_NORMAL(poly->normal.z) * z) + poly->dist) *
+           sVrClimbWallSide;
 }
 
 static f32 Player_VrClimbBodyDist(Player* this) {
@@ -8642,6 +8646,58 @@ static s32 Player_VrClimbGlue(PlayState* play, Player* this, f32 dist) {
     s16 shapeYaw = this->actor.shape.rot.y;
     s16 yaw = this->yaw;
     u32 wallFlags = sTouchedWallFlags;
+
+    if (sVrClimbWallSide < 0.0f) {
+        CollisionPoly* poly;
+        s32 hitBgId;
+        Vec3f start;
+        Vec3f end;
+        Vec3f hit;
+        f32 outward[3];
+        f32 len;
+
+        if (!Player_VrClimbWallNormal(this, outward)) {
+            return false;
+        }
+        // Search from just behind Link toward the wall. Back-side climbables must be tested as
+        // two-sided: their authored front face points through the wall, away from the player.
+        start.x = this->actor.world.pos.x + outward[0] * 20.0f;
+        start.y = this->actor.world.pos.y + 26.0f;
+        start.z = this->actor.world.pos.z + outward[2] * 20.0f;
+        end.x = this->actor.world.pos.x - outward[0] * (dist + 35.0f);
+        end.y = start.y;
+        end.z = this->actor.world.pos.z - outward[2] * (dist + 35.0f);
+        if (BgCheck_EntityLineTest1(&play->colCtx, &start, &end, &hit, &poly, true, false, false, false,
+                                    &hitBgId)) {
+            s32 flags = func_80041DB8(&play->colCtx, poly, hitBgId);
+            if ((flags & 8) || (flags & 2) || func_80041E4C(&play->colCtx, poly, hitBgId)) {
+                this->actor.wallPoly = poly;
+                this->actor.wallBgId = hitBgId;
+                this->actor.bgCheckFlags |= 0x200;
+                sTouchedWallFlags = flags;
+                outward[0] = -COLPOLY_GET_NORMAL(poly->normal.x);
+                outward[2] = -COLPOLY_GET_NORMAL(poly->normal.z);
+                len = sqrtf(SQ(outward[0]) + SQ(outward[2]));
+                if (len > 0.001f) {
+                    outward[0] /= len;
+                    outward[2] /= len;
+                    this->actor.wallYaw = Math_Atan2S(outward[2], outward[0]);
+                    this->actor.shape.rot.y = this->yaw = this->actor.wallYaw + 0x8000;
+                    this->actor.world.pos.x = hit.x + outward[0] * dist;
+                    this->actor.world.pos.z = hit.z + outward[2] * dist;
+                    return true;
+                }
+            }
+        }
+        this->actor.world.pos = pos;
+        this->actor.wallPoly = wallPoly;
+        this->actor.wallBgId = wallBgId;
+        this->actor.wallYaw = wallYaw;
+        this->actor.shape.rot.y = shapeYaw;
+        this->yaw = yaw;
+        sTouchedWallFlags = wallFlags;
+        return false;
+    }
 
     if (func_8083F360(play, this, 26.0f, dist, dist + 35.0f, -20.0f) &&
         ((sTouchedWallFlags & 8) || (sTouchedWallFlags & 2) ||
@@ -8701,9 +8757,15 @@ static void Player_VrClimbMount(PlayState* play, Player* this, VrClimbHit* hit) 
     f32 headFwd = CVarGetFloat("gVrHeadOffsetForward", 0.0f);
     f32 headSide = CVarGetFloat("gVrHeadOffsetSide", 0.0f);
 
+    sVrClimbWallSide = (((COLPOLY_GET_NORMAL(poly->normal.x) * this->actor.world.pos.x) +
+                         (COLPOLY_GET_NORMAL(poly->normal.y) * this->actor.world.pos.y) +
+                         (COLPOLY_GET_NORMAL(poly->normal.z) * this->actor.world.pos.z) + poly->dist) < 0.0f)
+                            ? -1.0f
+                            : 1.0f;
     this->actor.wallPoly = poly;
     this->actor.wallBgId = hit->bgId;
-    this->actor.wallYaw = Math_Atan2S(poly->normal.z, poly->normal.x);
+    this->actor.wallYaw = Math_Atan2S(poly->normal.z * sVrClimbWallSide,
+                                     poly->normal.x * sVrClimbWallSide);
     this->actor.bgCheckFlags |= BGCHECKFLAG_PLAYER_WALL_INTERACT;
     sTouchedWallFlags = wallFlags;
 
@@ -8773,6 +8835,10 @@ static void Player_VrClimbPlaceFromAbove(PlayState* play, Player* this, Collisio
     this->stateFlags1 &= ~(PLAYER_STATE1_IN_WATER | PLAYER_STATE1_HANGING_OFF_LEDGE);
     this->av1.actionVar1 = (wallFlags & 8) ? 2 : 0;
     this->av2.actionVar2 = 0;
+    sVrClimbWallSide = ((COLPOLY_GET_NORMAL(poly->normal.x) * outX) +
+                        (COLPOLY_GET_NORMAL(poly->normal.z) * outZ)) < 0.0f
+                           ? -1.0f
+                           : 1.0f;
     this->actor.wallPoly = poly;
     this->actor.wallBgId = bgId;
     this->actor.wallYaw = Math_Atan2S(outZ, outX);
