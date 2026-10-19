@@ -31,10 +31,39 @@
 #include "soh/resource/type/scenecommand/SetEchoSettings.h"
 #include "soh/resource/type/scenecommand/SetAlternateHeaders.h"
 #include <spdlog/spdlog.h>
+#include <algorithm>
+#include <vector>
 
 extern Ship::IResource* OTRPlay_LoadFile(PlayState* play, const char* fileName);
 extern "C" s32 Object_Spawn(ObjectContext* objectCtx, s16 objectId);
 extern "C" RomFile sNaviMsgFiles[];
+
+static std::vector<s16> sVrDoorOriginalObjects;
+static std::vector<s16> sVrDoorDestinationObjects;
+
+extern "C" void VrDoor_ResetRetainedObjects(void) {
+    sVrDoorOriginalObjects.clear();
+    sVrDoorDestinationObjects.clear();
+}
+
+extern "C" void VrDoor_ReleaseRetainedObjects(PlayState* play, bool keepDestination) {
+    if (play == nullptr) return;
+    const std::vector<s16>& keep = keepDestination ? sVrDoorDestinationObjects : sVrDoorOriginalObjects;
+    if (keep.empty()) return;
+    s32 lastUsed = play->objectCtx.unk_09 - 1;
+    for (s32 i = play->objectCtx.unk_09; i < play->objectCtx.num; ++i) {
+        const s16 id = play->objectCtx.status[i].id;
+        const s16 absoluteId = id < 0 ? -id : id;
+        if (std::find(keep.begin(), keep.end(), absoluteId) == keep.end()) {
+            play->objectCtx.status[i].id = OBJECT_INVALID;
+        } else {
+            lastUsed = i;
+        }
+    }
+    play->objectCtx.num = std::max<s32>(play->objectCtx.unk_09, lastUsed + 1);
+    Actor_KillAllWithMissingObject(play, &play->actorCtx);
+    VrDoor_ResetRetainedObjects();
+}
 s32 OTRScene_ExecuteCommands(PlayState* play, SOH::Scene* scene);
 
 bool Scene_CommandSpawnList(PlayState* play, SOH::ISceneCommand* cmd) {
@@ -157,6 +186,13 @@ bool Scene_CommandObjectList(PlayState* play, SOH::ISceneCommand* cmd) {
         // Normal room streaming replaces this list and kills actors whose object disappears. A
         // physical open doorway intentionally keeps both rooms live, so retain the old banks and
         // append only objects the destination room does not already share.
+        if (sVrDoorOriginalObjects.empty()) {
+            for (s32 existing = play->objectCtx.unk_09; existing < play->objectCtx.num; ++existing) {
+                const s16 id = play->objectCtx.status[existing].id;
+                if (id != OBJECT_INVALID) sVrDoorOriginalObjects.push_back(id < 0 ? -id : id);
+            }
+        }
+        sVrDoorDestinationObjects.assign(cmdObj->objects.begin(), cmdObj->objects.end());
         i = play->objectCtx.num;
         for (k = 0; k < cmdObj->objects.size(); ++k) {
             const s16 wanted = cmdObj->objects[k];
@@ -168,11 +204,14 @@ bool Scene_CommandObjectList(PlayState* play, SOH::ISceneCommand* cmd) {
                     break;
                 }
             }
-            if (!present && i < OBJECT_EXCHANGE_BANK_MAX - 1) {
-                OTRfunc_800982FC(&play->objectCtx, i++, wanted);
+            if (!present) {
+                s32 slot = play->objectCtx.unk_09;
+                while (slot < play->objectCtx.num && play->objectCtx.status[slot].id != OBJECT_INVALID) ++slot;
+                if (slot >= play->objectCtx.num) slot = i++;
+                if (slot < OBJECT_EXCHANGE_BANK_MAX - 1) OTRfunc_800982FC(&play->objectCtx, slot, wanted);
             }
         }
-        play->objectCtx.num = i;
+        play->objectCtx.num = std::min<s32>(i, OBJECT_EXCHANGE_BANK_MAX - 1);
         return false;
     }
 

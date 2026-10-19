@@ -533,7 +533,8 @@ extern "C" bool VrArchery_GalleryOwnsWeapon(void) {
 // launch the prepared projectile, and sits on the first world surface along that line. No flat-mode
 // or classic-control path reaches this function because VrArchery_AimSegment requires a live VR nock.
 extern "C" void VrArchery_DrawAimDot(void) {
-    if (gPlayState == NULL || !CVarGetInteger("gVrArcheryAimDot", 1) || !sNocked) {
+    if (gPlayState == NULL || !VR_IsInitialized() || !VR_GetFirstPerson() || VR_IsFlatScreen() ||
+        !CVarGetInteger("gVrArcheryAimDot", 1) || !sNocked) {
         return;
     }
     float ray[6];
