@@ -1682,13 +1682,6 @@ void SohMenu::AddMenuVRSettings() {
                      .Tooltip("Fuse duration for bombchus grabbed through the physical VR interaction. "
                               "Defaults to eight seconds; six seconds is the original duration. This does not affect button-used "
                               "bombchus or non-VR gameplay."));
-    AddWidget(gameplayPath, "Throw Physical Bombchus", WIDGET_CVAR_CHECKBOX)
-        .CVar("gVrPhysBombchuThrow")
-        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysBombchuDrop", 1); })
-        .Options(CheckboxOptions()
-                     .DefaultValue(true)
-                     .Tooltip("Release a grabbed Bombchu with your hand velocity. It flies until it lands, "
-                              "then crawls in the aiming arrow's direction. Disable to drop it straight down."));
     AddWidget(gameplayPath, "Fairy Bow", WIDGET_SEPARATOR_TEXT);
     AddWidget(gameplayPath, "Bow-Hand Trigger Cycles Arrows", WIDGET_CVAR_CHECKBOX)
         .CVar("gVrBowTriggerArrowCycle")
@@ -3120,26 +3113,15 @@ void SohMenu::AddMenuVRSettings() {
                               "with your sword hand and squeeze grip to grab; release grip to throw. "
                               "Switching equipment drops the held item without a throw impulse. "
                               "Disable for button-operated use after selection."));
-    AddWidget(devPath, "Physical Throw Strength: %.2fx", WIDGET_CVAR_SLIDER_FLOAT)
-        .CVar("gVrItemThrowStrength")
-        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalItemThrows", 1); })
-        .Options(FloatSliderOptions()
-                     .Min(0.5f)
-                     .Max(2.0f)
-                     .DefaultValue(1.0f)
-                     .Step(0.05f)
-                     .Format("%.2fx")
-                     .Tooltip("Scales physical bomb, Bombchu, and Deku Nut release velocity. 1.00x is calibrated "
-                              "to give an ordinary VR throw reach comparable to the original game."));
     AddWidget(devPath, "Physical Bombchu Drop", WIDGET_CVAR_CHECKBOX)
         .CVar("gVrPhysBombchuDrop")
         .Options(CheckboxOptions()
                      .DefaultValue(true)
                      .Tooltip("Selecting a bombchu shows a preview in front of you. Grab it with grip "
                               "(the fuse starts then, as in the base game) and let go anywhere: it "
-                              "releases from your hand, lands, and crawls off in the indicated "
-                              "direction. Throw or drop behavior is configured in VR Gameplay. "
-                              "Needs Physical Bomb and Nut Throws on. Disable for the "
+                              "drops straight down from your hand, lands, and crawls off in the "
+                              "direction the controller was pointing. No throw, however fast your "
+                              "hand moved. Needs Physical Bomb and Nut Throws on. Disable for the "
                               "base game's put-down after selection."));
     AddWidget(devPath, "Bombchu Preview Size: %.0f%%", WIDGET_CVAR_SLIDER_FLOAT)
         .CVar("gVrChuPreviewScale")
