@@ -67,6 +67,27 @@ bool OwnsBoss() {
            CHECK_DUNGEON_ITEM(DUNGEON_KEY_BOSS, map);
 }
 
+bool IsBossKeyDungeon(const PlayState* play) {
+    if (play == nullptr) return false;
+    switch (play->sceneNum) {
+        case SCENE_FOREST_TEMPLE:
+        case SCENE_FIRE_TEMPLE:
+        case SCENE_WATER_TEMPLE:
+        case SCENE_SPIRIT_TEMPLE:
+        case SCENE_SHADOW_TEMPLE:
+        case SCENE_INSIDE_GANONS_CASTLE:
+        case SCENE_GANONS_TOWER:
+        case SCENE_FOREST_TEMPLE_BOSS:
+        case SCENE_FIRE_TEMPLE_BOSS:
+        case SCENE_WATER_TEMPLE_BOSS:
+        case SCENE_SPIRIT_TEMPLE_BOSS:
+        case SCENE_SHADOW_TEMPLE_BOSS:
+            return true;
+        default:
+            return false;
+    }
+}
+
 bool HasLockedBossDoorNearby(PlayState* play) {
     if (play == nullptr || !OwnsBoss()) return false;
 
@@ -308,7 +329,10 @@ extern "C" bool VrKeys_HudHighlighted(int32_t bossKey) {
 }
 
 extern "C" bool VrKeys_BossAvailable(PlayState* play) {
-    return HasLockedBossDoorNearby(play);
+    // The wrist HUD is an inventory display: keep the Boss Key visible whenever this dungeon's
+    // key is owned. HasLockedBossDoorNearby remains the stricter interaction gate below, so the
+    // icon cannot spawn a physical key in unrelated rooms or after the Boss Door is unlocked.
+    return IsBossKeyDungeon(play) && OwnsBoss();
 }
 
 extern "C" void VrKeys_Tick(PlayState* play, Player* player) {

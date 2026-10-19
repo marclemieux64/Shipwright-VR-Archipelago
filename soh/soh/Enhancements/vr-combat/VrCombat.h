@@ -613,7 +613,8 @@ bool VrKeys_GripConsumed(int32_t hand, uint16_t mask);
 bool VrKeys_HoldsHand(int32_t hand);
 // True while the grabbing hand is inside this wrist key's visible card (bossKey: 0 small, 1 boss).
 bool VrKeys_HudHighlighted(int32_t bossKey);
-// True only when the owned Boss Key can currently be used on a nearby, still-locked boss door.
+// True when the current dungeon's Boss Key is owned, for persistent wrist-HUD visibility.
+// Physical spawning remains restricted to a nearby, still-locked Boss Door in VrKeys_Tick.
 bool VrKeys_BossAvailable(struct PlayState* play);
 void VrKeys_Reset(void);
 // Returns true after the held physical key has been aligned with and pushed through this lock.
