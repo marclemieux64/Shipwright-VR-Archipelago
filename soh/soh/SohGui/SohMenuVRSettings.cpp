@@ -3041,6 +3041,12 @@ void SohMenu::AddMenuVRSettings() {
                               "run at once (cheaper), but enemies and objects far off to your sides "
                               "pause sooner than in vanilla. Default on for Quest, off on PC."));
 
+    AddWidget(perfPath, "Display-List Processing Cache", WIDGET_CVAR_CHECKBOX)
+        .CVar("gVrInterpreterCache")
+        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
+            "Caches immutable geometry resource lookups and repeated shader metadata throughout VR. "
+            "Improves CPU performance without reducing visual quality. Disable only for compatibility testing."));
+
     perfPath.column = SECTION_COLUMN_2;
     AddWidget(perfPath, "Live Frame Cost", WIDGET_SEPARATOR_TEXT);
     AddWidget(perfPath, "VRPerformanceReadout", WIDGET_CUSTOM).CustomFunction(VrPerformanceReadout).HideInSearch(true);
