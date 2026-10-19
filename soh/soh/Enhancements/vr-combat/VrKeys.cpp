@@ -46,7 +46,8 @@ void LockOffsets(Kind kind, float* horizontal, float* vertical, float* depth) {
 }
 
 bool Gate(PlayState* play, Player* player) {
-    return play && player && CVarGetInteger("gVrPhysicalKeys", 1) && CVarGetInteger("gVrPhysicalDoors", 1) &&
+    return play && player && player == GET_PLAYER(play) && CVarGetInteger("gVrPhysicalKeys", 1) &&
+           CVarGetInteger("gVrPhysicalDoors", 1) &&
            VR_IsInitialized() && VR_GetFirstPerson() && !VR_IsFlatScreen() &&
            CVarGetInteger("gVrMotionHands", 1) && VrItemSelect_ModeActive() &&
            VrItemSelect_SelectionAllowed() && play->pauseCtx.state == 0 && play->csCtx.state == CS_STATE_IDLE &&

@@ -6,6 +6,9 @@ extern "C" {
 #include "overlays/actors/ovl_En_Door/z_en_door.h"
 #include "overlays/actors/ovl_Door_Shutter/z_door_shutter.h"
 extern PlayState* gPlayState;
+s32 Player_HandleExitsAndVoids(PlayState* play, Player* player, CollisionPoly* poly, u32 bgId);
+void VrDoor_ReleaseRetainedObjects(PlayState* play, bool keepDestination);
+void VrDoor_ResetRetainedObjects(void);
 }
 
 #include "VrCombat.h"
@@ -201,6 +204,32 @@ void Clear() {
     sNear[0] = sNear[1] = false;
 }
 
+void ClearAllDoorState() {
+    Clear();
+    sCandidate = nullptr;
+    sJabuDoor = sJabuLatchDoor = nullptr;
+    sJabuNear[0] = sJabuNear[1] = false;
+    sJabuLatched[0] = sJabuLatched[1] = false;
+    sBossCandidate = sBossDoor = sBossLatchDoor = nullptr;
+    sBossNear[0] = sBossNear[1] = false;
+    sBossLatched[0] = sBossLatched[1] = false;
+    sBossRoomRequested = sBossFullyOpen = sBossLiftArmed = false;
+}
+
+void ForgetDestroyedDoor(Actor* actor) {
+    if (actor == nullptr) return;
+    if (actor == reinterpret_cast<Actor*>(sDoor)) Clear();
+    if (actor == reinterpret_cast<Actor*>(sCandidate)) sCandidate = nullptr;
+    if (actor == reinterpret_cast<Actor*>(sJabuDoor)) sJabuDoor = nullptr;
+    if (actor == reinterpret_cast<Actor*>(sJabuLatchDoor)) sJabuLatchDoor = nullptr;
+    if (actor == reinterpret_cast<Actor*>(sBossCandidate)) sBossCandidate = nullptr;
+    if (actor == reinterpret_cast<Actor*>(sBossDoor)) sBossDoor = nullptr;
+    if (actor == reinterpret_cast<Actor*>(sBossLatchDoor)) {
+        sBossLatchDoor = nullptr;
+        sBossFullyOpen = sBossLiftArmed = false;
+    }
+}
+
 void CaptureGrabOffset(const EnDoor* door, int hand, float side) {
     float handPos[3], handle[3], right[3], normal[3];
     if (!HandPosition(hand, handPos)) return;
@@ -274,6 +303,7 @@ void RequestRoom(EnDoor* door, PlayState* play, Player* player) {
 
 void ResolveLoadedRooms(EnDoor* door, PlayState* play, Player* player) {
     if (!sRoomRequested || play->roomCtx.status != 0) return;
+    const bool enteredDestination = PlayerSide(door, player) != sSide;
     if (play->roomCtx.prevRoom.num >= 0) {
         // Room_Request makes the destination curRoom immediately. Decide which room survives from
         // the player's actual side now, never from a cached crossing flag that may miss a frame.
@@ -284,6 +314,8 @@ void ResolveLoadedRooms(EnDoor* door, PlayState* play, Player* player) {
         }
         Room_FinishRoomChange(play, &play->roomCtx);
     }
+    VrDoor_ReleaseRetainedObjects(play, enteredDestination);
+    if (enteredDestination) Play_SetupRespawnPoint(play, RESPAWN_MODE_DOWN, 0xDFF);
     door->actor.room = play->roomCtx.curRoom.num;
     if (door->actor.child != nullptr) door->actor.child->room = play->roomCtx.curRoom.num;
     if (door->actor.parent != nullptr) door->actor.parent->room = play->roomCtx.curRoom.num;
@@ -388,6 +420,7 @@ extern "C" int32_t VrBossDoor_Tick(DoorShutter* door, PlayState* play) {
             play->roomCtx.prevRoom = room;
             Room_FinishRoomChange(play, &play->roomCtx);
         }
+        VrDoor_ReleaseRetainedObjects(play, false);
         door->dyna.actor.room = play->roomCtx.curRoom.num;
         sBossRoomRequested = false;
         sBossCandidate = nullptr;
@@ -553,6 +586,8 @@ extern "C" bool VrBossDoor_KeepOpen(DoorShutter* door, PlayState* play) {
     if (side == sBossEntrySide || door->dyna.actor.xzDistToPlayer < 70.0f) return true;
     if (sBossRoomRequested && play->roomCtx.status == 0 && play->roomCtx.prevRoom.num >= 0) {
         Room_FinishRoomChange(play, &play->roomCtx);
+        VrDoor_ReleaseRetainedObjects(play, true);
+        Play_SetupRespawnPoint(play, RESPAWN_MODE_DOWN, 0xDFF);
     }
     sBossLatchDoor = nullptr;
     sBossCandidate = nullptr;
@@ -709,13 +744,17 @@ extern "C" bool VrDoor_Tick(EnDoor* door, PlayState* play) {
         if (fabsf(dx * right[0] + dz * right[2]) < 28.0f) {
             // The separate destination scene cannot coexist with this one. Hand the transition to
             // the original entrance/exit logic only after Link has physically crossed the opening.
-            player->doorActor = &door->actor;
-            player->doorType = PLAYER_DOORTYPE_HANDLE;
-            player->doorDirection = (sSide > 0.0f) ? 1 : -1;
-            play->state.input[0].press.button |= BTN_A;
-            door->jointTable[3].z = 0;
-            Clear();
-            return false;
+            Vec3f checkPos = player->actor.world.pos;
+            checkPos.y = door->actor.world.pos.y + 10.0f;
+            CollisionPoly* groundPoly = nullptr;
+            BgCheck_EntityRaycastFloor1(&play->colCtx, &groundPoly, &checkPos);
+            if (groundPoly != nullptr && Player_HandleExitsAndVoids(play, player, groundPoly, BGCHECK_SCENE)) {
+                gSaveContext.entranceSpeed = 2.0f;
+                gSaveContext.entranceSound = NA_SE_OC_DOOR_OPEN;
+                door->jointTable[3].z = 0;
+                Clear();
+                return false;
+            }
         }
     }
     if (sRoomRequested && play->roomCtx.status == 0 && PlayerSide(door, player) != sSide) {
@@ -1021,6 +1060,11 @@ extern "C" void VrDoor_DrawHandleMarker(void) {
 namespace {
 void RegisterVrDoor() {
     COND_HOOK(OnPlayDrawEnd, true, VrDoor_DrawHandleMarker);
+    COND_HOOK(OnSceneInit, true, [](int16_t) {
+        ClearAllDoorState();
+        VrDoor_ResetRetainedObjects();
+    });
+    COND_HOOK(OnActorDestroy, true, [](void* actor) { ForgetDestroyedDoor(static_cast<Actor*>(actor)); });
 }
 static RegisterShipInitFunc initVrDoor(RegisterVrDoor);
 }

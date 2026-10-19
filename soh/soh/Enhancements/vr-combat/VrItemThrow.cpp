@@ -169,7 +169,8 @@ Vtx ChuGuideVtx(float x, float z, u8 alpha) {
 }
 
 void DrawChuAimGuide(Player* player) {
-    if (!CVarGetInteger("gVrBombchuAimGuide", 1) || !player || !HasThrowable(player) ||
+    if (!VR_IsInitialized() || !VR_GetFirstPerson() || VR_IsFlatScreen() ||
+        !CVarGetInteger("gVrBombchuAimGuide", 1) || !player || !HasThrowable(player) ||
         player->heldActor->id != ACTOR_EN_BOM_CHU) return;
 
     float forward[3];
