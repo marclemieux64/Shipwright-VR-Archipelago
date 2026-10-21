@@ -584,15 +584,19 @@ bool VrDoor_GripConsumed(int32_t hand, uint16_t mask);
 struct DoorShutter;
 bool VrJabuDoor_Tick(struct DoorShutter* door, struct PlayState* play);
 bool VrJabuDoor_GripConsumed(int32_t hand, uint16_t mask);
-// An unlocked boss shutter can be gripped on both halves and physically lifted in VR.
+// An unlocked, fully unbarred rigid shutter can be gripped with both hands and physically lifted in VR.
+// This covers Boss Doors and ordinary dungeon shutters; Jabu and special encounter blockers are excluded.
 // 0 = inactive, 1 = owns the door/grips, 2 = fully raised.
-int32_t VrBossDoor_Tick(struct DoorShutter* door, struct PlayState* play);
-bool VrBossDoor_GripConsumed(int32_t hand, uint16_t mask);
-// While latched, the hand is rendered as a bare closed fist instead of its equipped weapon/shield.
-bool VrBossDoor_HoldsHand(int32_t hand);
-bool VrBossDoor_KeepOpen(struct DoorShutter* door, struct PlayState* play);
-float VrBossDoor_OpenHeight(struct DoorShutter* door);
-bool VrBossDoor_PinnedHandMatrix(struct Player* player, int32_t hand, float* mf16);
+int32_t VrShutter_Tick(struct DoorShutter* door, struct PlayState* play);
+bool VrShutter_GripConsumed(int32_t hand, uint16_t mask);
+// While hovering or latched, the hand is rendered as a bare open palm instead of its equipped item.
+bool VrShutter_HoldsHand(int32_t hand);
+bool VrShutter_KeepOpen(struct DoorShutter* door, struct PlayState* play);
+// Completes a cancelled physical shutter's room rollback only after the slab reaches fully closed.
+void VrShutter_FinishClose(struct DoorShutter* door, struct PlayState* play);
+bool VrShutter_ConsumePhysicalClose(struct DoorShutter* door);
+float VrShutter_OpenHeight(struct DoorShutter* door);
+bool VrShutter_PinnedHandMatrix(struct Player* player, int32_t hand, float* mf16);
 // Suppresses only the player's wall sweep inside the centre of a sufficiently open physical doorway.
 bool VrDoor_AllowsWallPass(struct Actor* actor, const float* nextPos3, const float* prevPos3);
 // Replaces the removed closed-door wall with a player-only collider along the rotated physical leaf.
