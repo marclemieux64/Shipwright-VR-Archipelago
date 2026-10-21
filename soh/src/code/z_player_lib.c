@@ -1636,9 +1636,10 @@ s32 Player_OverrideLimbDrawGameplayVRFirstPerson(PlayState* play, s32 limbIndex,
             // dominant hand (VrHookshot_RightLimbHand swaps the limbs); L_HAND takes the other.
             s32 rightLimbVr = VrHookshot_RightLimbHand(this);
             s32 vrHand = (limbIndex == PLAYER_LIMB_R_HAND) ? rightLimbVr : (rightLimbVr ^ 1);
-            // A physical dungeon key is held in a visibly closed fist. This changes only the
-            // first-person VR hand mesh; the key itself is drawn independently on the same hand.
-            if (VrKeys_HoldsHand(vrHand) || VrBossDoor_HoldsHand(vrHand)) {
+            s32 vrShutterPalm = VrShutter_HoldsHand(vrHand);
+            // A physical dungeon key is held in a visibly closed fist. The shutter open-palm model
+            // is chosen below only after that exact shutter state successfully supplies the pin.
+            if (VrKeys_HoldsHand(vrHand)) {
                 if (limbIndex == PLAYER_LIMB_L_HAND) {
                     *dList = ResourceMgr_LoadGfxByName(
                         gPlayerLeftHandClosedDLs[gSaveContext.linkAge + sDListsLodOffset]);
@@ -1677,8 +1678,21 @@ s32 Player_OverrideLimbDrawGameplayVRFirstPerson(PlayState* play, s32 limbIndex,
                 // A hand latched on a silver boulder rides it the same way (VrCarry).
                 s32 vrPinned = VrBlock_PinnedHandMatrix(this, vrHand, &handMtx.mf[0][0]) ||
                                VrCarry_PinnedHandMatrix(this, vrHand, &handMtx.mf[0][0]) ||
-                               VrDoor_PinnedHandMatrix(this, vrHand, &handMtx.mf[0][0]) ||
-                               VrBossDoor_PinnedHandMatrix(this, vrHand, &handMtx.mf[0][0]);
+                               VrDoor_PinnedHandMatrix(this, vrHand, &handMtx.mf[0][0]);
+                s32 vrShutterPinned = !vrPinned && vrShutterPalm &&
+                                      VrShutter_PinnedHandMatrix(this, vrHand, &handMtx.mf[0][0]);
+                vrPinned = vrPinned || vrShutterPinned;
+                if (vrShutterPinned) {
+                    // The shutter pose rebuilds a positive-determinant matrix, so draw the native
+                    // anatomical mesh for the physical controller with normal culling.
+                    if (vrHand == VR_HAND_LEFT) {
+                        *dList = ResourceMgr_LoadGfxByName(
+                            gPlayerLeftHandOpenDLs[gSaveContext.linkAge + sDListsLodOffset]);
+                    } else {
+                        *dList = ResourceMgr_LoadGfxByName(
+                            sPlayerRightHandOpenDLs[gSaveContext.linkAge + sDListsLodOffset]);
+                    }
+                }
                 s32 vrBowAligned = !vrPinned && VrArchery_BowAlignedMatrix(vrHand, &handMtx.mf[0][0]);
                 // SOH [VR] Climbing (VrClimb): a holding hand is drawn on the surface where it took
                 // hold — a fixed offset from the controller, still live (welded as a child below).
@@ -1714,7 +1728,7 @@ s32 Player_OverrideLimbDrawGameplayVRFirstPerson(PlayState* play, s32 limbIndex,
                 }
                 pos->x = pos->y = pos->z = 0.0f;
                 rot->x = rot->y = rot->z = 0;
-                if (mirror) {
+                if (mirror && !vrShutterPinned) {
                     // The reflection flips triangle winding; invert back-face culling so the hand + held
                     // item don't render inside-out. Cleared on the next limb (top of this function).
                     OPEN_DISPS(play->state.gfxCtx);
