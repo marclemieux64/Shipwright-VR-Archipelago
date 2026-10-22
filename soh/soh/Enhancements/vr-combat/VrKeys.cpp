@@ -49,8 +49,7 @@ bool Gate(PlayState* play, Player* player) {
     return play && player && player == GET_PLAYER(play) && CVarGetInteger("gVrPhysicalKeys", 1) &&
            CVarGetInteger("gVrPhysicalDoors", 1) &&
            VR_IsInitialized() && VR_GetFirstPerson() && !VR_IsFlatScreen() &&
-           CVarGetInteger("gVrMotionHands", 1) && VrItemSelect_ModeActive() &&
-           VrItemSelect_SelectionAllowed() && play->pauseCtx.state == 0 && play->csCtx.state == CS_STATE_IDLE &&
+           CVarGetInteger("gVrMotionHands", 1) && play->pauseCtx.state == 0 && play->csCtx.state == CS_STATE_IDLE &&
            play->transitionTrigger == TRANS_TRIGGER_OFF && play->bombchuBowlingStatus == 0 &&
            play->shootingGalleryStatus == 0 && !(player->stateFlags1 &
                (PLAYER_STATE1_ON_HORSE | PLAYER_STATE1_IN_WATER | PLAYER_STATE1_DEAD));
@@ -59,7 +58,9 @@ bool Gate(PlayState* play, Player* player) {
 bool HasSmall() {
     const int map = gSaveContext.mapIndex;
     return map >= 0 && map < (int)ARRAY_COUNT(gSaveContext.inventory.dungeonKeys) &&
-           gSaveContext.inventory.dungeonKeys[map] > 0;
+           // Negative is the engine's unlimited/debug-key sentinel (the HUD renders infinity).
+           // Treat every nonzero value as available so the visible card and its interaction agree.
+           gSaveContext.inventory.dungeonKeys[map] != 0;
 }
 bool OwnsBoss() {
     const int map = gSaveContext.mapIndex;
@@ -103,6 +104,16 @@ bool HasLockedBossDoorNearby(PlayState* play) {
         const float dy = actor->world.pos.y - player->actor.world.pos.y;
         const float dz = actor->world.pos.z - player->actor.world.pos.z;
         if (dx * dx + dy * dy + dz * dz <= kAvailabilityRadiusSq) return true;
+    }
+    return false;
+}
+
+bool HasUsedBossDoorLoaded(PlayState* play) {
+    if (play == nullptr) return false;
+    for (Actor* actor = play->actorCtx.actorLists[ACTORCAT_DOOR].head; actor != nullptr; actor = actor->next) {
+        if (actor->id != ACTOR_DOOR_SHUTTER || actor->update == nullptr) continue;
+        DoorShutter* door = reinterpret_cast<DoorShutter*>(actor);
+        if (door->doorType == SHUTTER_BOSS && Flags_GetSwitch(play, actor->params & 0x3F)) return true;
     }
     return false;
 }
@@ -329,10 +340,9 @@ extern "C" bool VrKeys_HudHighlighted(int32_t bossKey) {
 }
 
 extern "C" bool VrKeys_BossAvailable(PlayState* play) {
-    // The wrist HUD is an inventory display: keep the Boss Key visible whenever this dungeon's
-    // key is owned. HasLockedBossDoorNearby remains the stricter interaction gate below, so the
-    // icon cannot spawn a physical key in unrelated rooms or after the Boss Door is unlocked.
-    return IsBossKeyDungeon(play) && OwnsBoss();
+    // OoT retains the Boss Key inventory bit after use. For the physical wrist card, the unlocked
+    // boss-door switch is the consumed state: once that lock has accepted the key, hide the card.
+    return IsBossKeyDungeon(play) && OwnsBoss() && !HasUsedBossDoorLoaded(play);
 }
 
 extern "C" void VrKeys_Tick(PlayState* play, Player* player) {
@@ -340,7 +350,7 @@ extern "C" void VrKeys_Tick(PlayState* play, Player* player) {
         VrKeys_Reset();
         return;
     }
-    if ((sHeld == Kind::Small && !HasSmall()) || (sHeld == Kind::Boss && !HasLockedBossDoorNearby(play))) Clear();
+    if ((sHeld == Kind::Small && !HasSmall()) || (sHeld == Kind::Boss && !VrKeys_BossAvailable(play))) Clear();
     bool pressed[2], released[2];
     for (int h = 0; h < 2; ++h) {
         const bool grip = (VR_GetControllerButton(h) & VR_BTN_GRIP) != 0;
@@ -385,8 +395,12 @@ extern "C" void VrKeys_Tick(PlayState* play, Player* player) {
         }
         return;
     }
+    // Visibility and interaction must use the same ownership rules. Door proximity belongs to
+    // insertion, not to taking an already-visible inventory key from the wrist.
     const Kind available[2] = { HasSmall() ? Kind::Small : Kind::None,
-                                HasLockedBossDoorNearby(play) ? Kind::Boss : Kind::None };
+                                VrKeys_BossAvailable(play) ? Kind::Boss : Kind::None };
+    Kind nearest = Kind::None;
+    float nearestDistance = 1.0e30f;
     for (Kind kind : available) {
         if (kind == Kind::None) continue;
         // The key lives on the left wrist HUD, so the right hand takes it. Letting the wrist's own
@@ -398,10 +412,16 @@ extern "C" void VrKeys_Tick(PlayState* play, Player* player) {
                 distance > CVarGetFloat("gVrKeyGrabRadius", 12.0f) * 0.01f) {
                 continue;
             }
-            sNear[h] = true;
-            sNearKind = kind;
-            if (pressed[h]) { Take(kind, h); return; }
+            if (distance < nearestDistance) {
+                nearestDistance = distance;
+                nearest = kind;
+            }
         }
+    }
+    if (nearest != Kind::None) {
+        sNear[VR_HAND_RIGHT] = true;
+        sNearKind = nearest;
+        if (pressed[VR_HAND_RIGHT]) Take(nearest, VR_HAND_RIGHT);
     }
 }
 
