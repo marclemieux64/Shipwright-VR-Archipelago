@@ -220,6 +220,18 @@ float PlayerSide(const EnDoor* door, const Player* player) {
     return d >= 0.0f ? 1.0f : -1.0f;
 }
 
+bool PlayerInsideDoorway(const EnDoor* door, const Player* player, float halfWidth) {
+    if (door == nullptr || player == nullptr) return false;
+    float right[3], normal[3]; Axes(door, right, normal);
+    const float dx = player->actor.world.pos.x - door->actor.world.pos.x;
+    const float dz = player->actor.world.pos.z - door->actor.world.pos.z;
+    const float lateral = dx * right[0] + dz * right[2];
+    const float y = player->actor.world.pos.y - door->actor.world.pos.y;
+    // Link's actor position is at his feet. Only crossing the finite opening counts; crossing the
+    // door plane above the lintel must leave the preloaded destination uncommitted.
+    return fabsf(lateral) < halfWidth && y > -8.0f && y < 80.0f;
+}
+
 float EyeDistanceXZ(const EnDoor* door, const PlayState* play) {
     const float dx = play->view.eye.x - door->actor.world.pos.x;
     const float dz = play->view.eye.z - door->actor.world.pos.z;
@@ -394,19 +406,19 @@ void AssistWalkThrough(EnDoor* door, PlayState* play, Player* player) {
     const float dx = player->actor.world.pos.x - door->actor.world.pos.x;
     const float dz = player->actor.world.pos.z - door->actor.world.pos.z;
     const float across = dx * normal[0] + dz * normal[2];
-    const float lateral = dx * right[0] + dz * right[2];
     const float distance = fabsf(across);
 
     // Approaching the open centre starts streaming the adjacent room. Once it is ready, the local
     // wall-collision aperture below lets the player cross under their own locomotion.
     if (sPrevPlaneDistance < 1e20f && distance < sPrevPlaneDistance - 0.02f && distance < 36.0f &&
-        fabsf(lateral) < 24.0f) {
+        PlayerInsideDoorway(door, player, 24.0f)) {
         sPassagePending = true;
     }
     if (sPassagePending && !sRoomRequested) {
         RequestRoom(door, play, player);
     }
-    if (sPassagePending && sRoomRequested && play->roomCtx.status == 0 && PlayerSide(door, player) != sSide) {
+    if (sPassagePending && sRoomRequested && play->roomCtx.status == 0 && PlayerSide(door, player) != sSide &&
+        PlayerInsideDoorway(door, player, 18.0f)) {
         sPassageCommitted = true;
     }
     sPrevPlaneDistance = distance;
@@ -416,9 +428,12 @@ void RequestRoom(EnDoor* door, PlayState* play, Player* player) {
     sRoomRequested = BeginDoorwayTransition(sHingeTransition, &door->actor, play, sSide, true);
 }
 
-void ResolveLoadedRooms(EnDoor* door, PlayState* play, Player* player) {
+void ResolveLoadedRooms(EnDoor*, PlayState* play, Player*) {
     if (!sRoomRequested || play->roomCtx.status != 0) return;
-    FinishDoorwayTransition(sHingeTransition, play, PlayerSide(door, player), true);
+    // A side change alone is insufficient: Link can cross the door's infinite plane above its
+    // frame. Preserve the destination only after a crossing inside the physical aperture.
+    const float resolvedSide = sPassageCommitted ? -sHingeTransition.entrySide : sHingeTransition.entrySide;
+    FinishDoorwayTransition(sHingeTransition, play, resolvedSide, true);
     sRoomRequested = false;
 }
 } // namespace
@@ -1028,10 +1043,7 @@ extern "C" bool VrDoor_Tick(EnDoor* door, PlayState* play) {
     const int doorType = (door->actor.params >> 7) & 7;
     if (doorType == DOOR_SCENEEXIT && sHand < 0 &&
         fabsf(sAngle * (360.0f / 65536.0f)) >= kExitDeg && PlayerSide(door, player) != sSide) {
-        float right[3], normal[3]; Axes(door, right, normal);
-        const float dx = player->actor.world.pos.x - door->actor.world.pos.x;
-        const float dz = player->actor.world.pos.z - door->actor.world.pos.z;
-        if (fabsf(dx * right[0] + dz * right[2]) < 28.0f) {
+        if (PlayerInsideDoorway(door, player, 28.0f)) {
             // The separate destination scene cannot coexist with this one. Hand the transition to
             // the original entrance/exit logic only after Link has physically crossed the opening.
             Vec3f checkPos = player->actor.world.pos;
@@ -1048,10 +1060,7 @@ extern "C" bool VrDoor_Tick(EnDoor* door, PlayState* play) {
         }
     }
     if (sRoomRequested && play->roomCtx.status == 0 && PlayerSide(door, player) != sSide) {
-        float right[3], normal[3]; Axes(door, right, normal);
-        const float dx = player->actor.world.pos.x - door->actor.world.pos.x;
-        const float dz = player->actor.world.pos.z - door->actor.world.pos.z;
-        if (fabsf(dx * right[0] + dz * right[2]) < 18.0f) {
+        if (PlayerInsideDoorway(door, player, 18.0f)) {
             sPassageCommitted = true;
         }
     }
