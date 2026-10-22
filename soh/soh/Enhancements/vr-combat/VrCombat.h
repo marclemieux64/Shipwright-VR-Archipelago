@@ -603,6 +603,8 @@ bool VrDoor_AllowsWallPass(struct Actor* actor, const float* nextPos3, const flo
 void VrDoor_ConstrainPlayerToLeaf(struct Actor* actor);
 // During physical-door streaming, room object banks are merged so prevRoom actors keep their assets.
 bool VrDoor_KeepPreviousRoomActors(void);
+// True only around the Room_RequestNewRoom call made by a physical VR doorway.
+bool VrDoor_IsPhysicalRoomRequest(void);
 int32_t VrDoor_EnvironmentBehaviorType2(struct PlayState* play);
 // Supplies a stable virtual viewpoint for EnDoor's front/back display-list choice near the leaf.
 bool VrDoor_StableFaceView(struct EnDoor* door, float* outPos3);

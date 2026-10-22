@@ -116,6 +116,7 @@ struct PhysicalDoorwayTransition {
 
 PhysicalDoorwayTransition sHingeTransition;
 PhysicalDoorwayTransition sShutterTransition;
+bool sPhysicalRoomRequest = false;
 
 void SetDoorwayActorRoom(Actor* actor, int room, bool includeRelatives) {
     if (actor == nullptr) return;
@@ -140,10 +141,13 @@ bool BeginDoorwayTransition(PhysicalDoorwayTransition& transition, Actor* actor,
     } else {
         destination = entry->sides[entrySide > 0.0f ? 0 : 1].room;
     }
-    if (destination < 0 || destination == play->roomCtx.curRoom.num ||
-        !Room_RequestNewRoom(play, &play->roomCtx, destination)) {
+    if (destination < 0 || destination == play->roomCtx.curRoom.num) {
         return false;
     }
+    sPhysicalRoomRequest = true;
+    const bool requested = Room_RequestNewRoom(play, &play->roomCtx, destination) != 0;
+    sPhysicalRoomRequest = false;
+    if (!requested) return false;
     transition.owner = actor;
     transition.entrySide = entrySide;
     transition.requested = true;
@@ -1181,6 +1185,11 @@ extern "C" bool VrDoor_KeepPreviousRoomActors(void) {
     const bool shutterStreaming = (sShutterCandidate != nullptr || sShutterLatchDoor != nullptr) && sShutterRoomRequested;
     return (ordinaryDoorStreaming || shutterStreaming) && gPlayState != nullptr &&
            CVarGetInteger("gVrPhysicalDoors", 1) && VR_IsInitialized() && !VR_IsFlatScreen();
+}
+
+extern "C" bool VrDoor_IsPhysicalRoomRequest(void) {
+    return sPhysicalRoomRequest && CVarGetInteger("gVrPhysicalDoors", 1) && VR_IsInitialized() &&
+           !VR_IsFlatScreen();
 }
 
 extern "C" int32_t VrDoor_EnvironmentBehaviorType2(PlayState* play) {
