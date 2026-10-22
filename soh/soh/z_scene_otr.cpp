@@ -6,8 +6,16 @@
 #include "soh/resource/type/CollisionHeader.h"
 #include "soh/resource/type/Cutscene.h"
 #include <ship/resource/type/Blob.h>
+#include <ship/Context.h>
+#include <ship/resource/ResourceManager.h>
 #include <memory>
 #include <cassert>
+#include <chrono>
+#include <future>
+#include <thread>
+#ifdef _WIN32
+#include <Windows.h>
+#endif
 #include "soh/resource/type/scenecommand/SetCameraSettings.h"
 #include "soh/resource/type/scenecommand/SetCutscenes.h"
 #include "soh/resource/type/scenecommand/SetStartPositionList.h"
@@ -40,6 +48,7 @@ extern "C" RomFile sNaviMsgFiles[];
 
 static std::vector<s16> sVrDoorOriginalObjects;
 static std::vector<s16> sVrDoorDestinationObjects;
+static std::shared_future<std::shared_ptr<Ship::IResource>> sRoomLoadFuture;
 
 extern "C" void VrDoor_ResetRetainedObjects(void) {
     sVrDoorOriginalObjects.clear();
@@ -528,8 +537,24 @@ s32 OTRScene_ExecuteCommands(PlayState* play, SOH::Scene* scene) {
 
 extern "C" s32 OTRfunc_800973FC(PlayState* play, RoomContext* roomCtx) {
     if (roomCtx->status == 1) {
-        // if (!osRecvMesg(&roomCtx->loadQueue, NULL, OS_MESG_NOBLOCK)) {
-        if (1) {
+        // Poll instead of waiting on the game thread so physical-door preloading cannot turn
+        // background resource work into a dropped frame.
+        const bool asyncReady = sRoomLoadFuture.valid() &&
+                                sRoomLoadFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+        if (roomCtx->roomToLoad != nullptr || asyncReady) {
+            auto roomData = roomCtx->roomToLoad != nullptr
+                                ? std::shared_ptr<SOH::Scene>()
+                                : std::static_pointer_cast<SOH::Scene>(sRoomLoadFuture.get());
+            if (sRoomLoadFuture.valid()) sRoomLoadFuture = {};
+            if (roomData == nullptr) {
+                if (roomCtx->roomToLoad == nullptr) {
+                    roomCtx->status = 0;
+                    SPDLOG_ERROR("Failed to load room {0:#x}", roomCtx->curRoom.num);
+                    return 0;
+                }
+            } else {
+                roomCtx->roomToLoad = roomData.get();
+            }
             roomCtx->status = 0;
             roomCtx->curRoom.segment = roomCtx->unk_34;
             gSegments[3] = VIRTUAL_TO_PHYSICAL(roomCtx->unk_34);
@@ -572,10 +597,44 @@ extern "C" s32 OTRRoom_RequestNewRoom(PlayState* play, RoomContext* roomCtx, s32
         // DmaMgr_SendRequest2(&roomCtx->dmaRequest, roomCtx->unk_34, play->roomList[roomNum].vromStart, size, 0,
         //&roomCtx->loadQueue, NULL, __FILE__, __LINE__);
 
-        auto roomData = std::static_pointer_cast<SOH::Scene>(
-            ResourceMgr_GetResourceByNameHandlingMQ(play->roomList[roomNum].fileName));
-        roomCtx->status = 1;
-        roomCtx->roomToLoad = roomData.get();
+        if (!VrDoor_IsPhysicalRoomRequest()) {
+            auto roomData = std::static_pointer_cast<SOH::Scene>(
+                ResourceMgr_GetResourceByNameHandlingMQ(play->roomList[roomNum].fileName));
+            roomCtx->roomToLoad = roomData.get();
+            roomCtx->activeBufPage ^= 1;
+            SPDLOG_INFO("Room Init - curRoom.num: {0:#x}", roomCtx->curRoom.num);
+            return 1;
+        }
+
+        std::string roomPath = play->roomList[roomNum].fileName;
+        if (roomPath.starts_with("__OTR__")) roomPath.erase(0, 7);
+        if (ResourceMgr_IsGameMasterQuest()) {
+            const size_t pos = roomPath.find("/nonmq/");
+            if (pos != std::string::npos) roomPath.replace(pos, 7, "/mq/");
+        }
+        auto resourceManager = Ship::Context::GetRawInstance()->GetResourceManager();
+        // Use a dedicated low-priority worker. The shared resource pool runs at normal priority,
+        // which can starve the latency-sensitive VR game/render thread during proximity preloads.
+        sRoomLoadFuture = std::async(std::launch::async, [resourceManager, roomPath]() {
+#ifdef _WIN32
+            SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+#endif
+            // Every room-local O2R resource shares the room header's path prefix. Cold rooms used
+            // to resolve all of these resources in a burst, causing the one-time VR frame drop;
+            // revisits were smooth only because that burst had populated the cache. Warm the same
+            // set incrementally and yield between files so frame production retains CPU time.
+            auto files = resourceManager->GetArchiveManager()->ListFiles(roomPath + "*");
+            std::shared_ptr<Ship::IResource> roomData;
+            for (const std::string& file : *files) {
+                auto resource = resourceManager->LoadResourceProcess(file);
+                if (file == roomPath) roomData = resource;
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            }
+            // A custom archive may not expose related assets under the conventional prefix.
+            if (roomData == nullptr) roomData = resourceManager->LoadResourceProcess(roomPath);
+            return roomData;
+        }).share();
+        roomCtx->roomToLoad = nullptr;
 
         roomCtx->activeBufPage ^= 1;
 
