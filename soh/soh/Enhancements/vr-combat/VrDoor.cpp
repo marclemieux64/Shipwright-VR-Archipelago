@@ -84,6 +84,9 @@ DoorShutter* sShutterDoor = nullptr;
 DoorShutter* sShutterLatchDoor = nullptr;
 DoorShutter* sShutterStreamDoor = nullptr;
 DoorShutter* sShutterJustClosedDoor = nullptr;
+DoorShutter* sShutterClosingRenderDoor = nullptr;
+DoorShutter* sShutterPreservedEntryUnlockDoor = nullptr;
+bool sShutterClosingRenderFlipped = false;
 bool sShutterLatched[2] = { false, false };
 bool sShutterGripNow[2] = { false, false };
 uint32_t sShutterInputFrame = UINT32_MAX;
@@ -112,6 +115,7 @@ float sShutterGrabLocal[2][2] = {};
 float sShutterStartMeanY = 0.0f;
 float sShutterStartHeight = 0.0f;
 float sShutterEntrySide = 1.0f;
+int sShutterEntryRoom = -1;
 bool sShutterRoomRequested = false;
 bool sShutterFullyOpen = false;
 bool sShutterLiftArmed = false;
@@ -124,6 +128,7 @@ bool sShutterCloseForNextDoor = false;
 struct PhysicalDoorwayTransition {
     Actor* owner = nullptr;
     float entrySide = 1.0f;
+    int entryRoom = -1;
     bool requested = false;
     bool crossed = false;
 };
@@ -141,12 +146,36 @@ void SetDoorwayActorRoom(Actor* actor, int room, bool includeRelatives) {
 
 bool BeginDoorwayTransition(PhysicalDoorwayTransition& transition, Actor* actor, PlayState* play,
                             float entrySide, bool includeRelatives) {
-    if (actor == nullptr || play == nullptr || transition.requested || play->roomCtx.status != 0 ||
-        play->roomCtx.prevRoom.num >= 0) {
+    if (actor == nullptr || play == nullptr || transition.requested) {
         return transition.requested && transition.owner == actor;
     }
     const int index = GET_TRANSITION_ACTOR_INDEX(actor);
     const TransitionActorEntry* entry = &play->transiActorCtx.list[index];
+
+    // The invisible En_Holl behind a doorway may begin loading the same adjacent room before a VR
+    // hand reaches the door. Adopt that exact room pair instead of rejecting the physical touch
+    // merely because prevRoom is already populated. Never claim a preload belonging to another
+    // transition actor.
+    if (play->roomCtx.prevRoom.num >= 0) {
+        const int currentRoom = play->roomCtx.curRoom.num;
+        const int previousRoom = play->roomCtx.prevRoom.num;
+        const bool matchingPair =
+            (entry->sides[0].room == currentRoom && entry->sides[1].room == previousRoom) ||
+            (entry->sides[1].room == currentRoom && entry->sides[0].room == previousRoom);
+        if (!matchingPair) return false;
+        transition.owner = actor;
+        transition.entrySide = entrySide;
+        // Room_RequestNewRoom promotes the destination to curRoom immediately and retains the
+        // physical origin as prevRoom. The player has not crossed this doorway yet, so prevRoom is
+        // the stable entry-room identity when adopting an En_Holl preload.
+        transition.entryRoom = previousRoom;
+        transition.requested = true;
+        transition.crossed = false;
+        SetDoorwayActorRoom(actor, -1, includeRelatives);
+        return true;
+    }
+    if (play->roomCtx.status != 0) return false;
+
     int destination;
     if (entry->sides[0].room == play->roomCtx.curRoom.num) {
         destination = entry->sides[1].room;
@@ -158,12 +187,17 @@ bool BeginDoorwayTransition(PhysicalDoorwayTransition& transition, Actor* actor,
     if (destination < 0 || destination == play->roomCtx.curRoom.num) {
         return false;
     }
+    // Capture the physical origin before Room_RequestNewRoom replaces curRoom with destination.
+    // Side-dependent shutter types use this identity for their switch/clear condition throughout
+    // the retained-room lifecycle.
+    const int entryRoom = play->roomCtx.curRoom.num;
     sPhysicalRoomRequest = true;
     const bool requested = Room_RequestNewRoom(play, &play->roomCtx, destination) != 0;
     sPhysicalRoomRequest = false;
     if (!requested) return false;
     transition.owner = actor;
     transition.entrySide = entrySide;
+    transition.entryRoom = entryRoom;
     transition.requested = true;
     transition.crossed = false;
     SetDoorwayActorRoom(actor, -1, includeRelatives);
@@ -520,6 +554,7 @@ void ClearAllDoorState() {
     sJabuNear[0] = sJabuNear[1] = false;
     sJabuLatched[0] = sJabuLatched[1] = false;
     sShutterCandidate = sShutterDoor = sShutterLatchDoor = sShutterStreamDoor = sShutterJustClosedDoor = nullptr;
+    sShutterClosingRenderDoor = sShutterPreservedEntryUnlockDoor = nullptr;
     sShutterLatched[0] = sShutterLatched[1] = false;
     sShutterHandState[0] = {};
     sShutterHandState[1] = {};
@@ -540,6 +575,10 @@ void ForgetDestroyedDoor(Actor* actor) {
     if (actor == reinterpret_cast<Actor*>(sShutterCandidate)) sShutterCandidate = nullptr;
     if (actor == reinterpret_cast<Actor*>(sShutterDoor)) sShutterDoor = nullptr;
     if (actor == reinterpret_cast<Actor*>(sShutterJustClosedDoor)) sShutterJustClosedDoor = nullptr;
+    if (actor == reinterpret_cast<Actor*>(sShutterClosingRenderDoor)) sShutterClosingRenderDoor = nullptr;
+    if (actor == reinterpret_cast<Actor*>(sShutterPreservedEntryUnlockDoor)) {
+        sShutterPreservedEntryUnlockDoor = nullptr;
+    }
     for (int hand = 0; hand < 2; ++hand) {
         if (actor == reinterpret_cast<Actor*>(sShutterHandState[hand].door)) sShutterHandState[hand] = {};
         if (actor == reinterpret_cast<Actor*>(sShutterPrevHoverDoor[hand])) sShutterPrevHoverDoor[hand] = nullptr;
@@ -619,6 +658,32 @@ void ResolveLoadedRooms(EnDoor*, PlayState* play, Player*) {
     FinishDoorwayTransition(sHingeTransition, play, resolvedSide, true);
     sRoomRequested = false;
 }
+
+void BeginShutterInputFrame(PlayState* play) {
+    if (play == nullptr || sShutterInputFrame == play->state.frames) return;
+    sShutterInputFrame = play->state.frames;
+    if (sShutterLatchDoor == nullptr) sShutterCandidate = nullptr;
+    for (int hand = 0; hand < 2; ++hand) {
+        const ShutterHandState previous = sShutterHandState[hand];
+        const bool previousFrame = previous.frame != UINT32_MAX && previous.frame + 1 == play->state.frames;
+        sShutterPrevHoverDoor[hand] =
+            previousFrame && previous.active && !previous.latched ? previous.door : nullptr;
+        sShutterPrevHoverFace[hand] = previous.surfaceFace;
+        sShutterHandState[hand] = {};
+        sShutterHandState[hand].frame = play->state.frames;
+        sShutterGripNow[hand] = (VR_GetControllerButton(hand) & VR_BTN_GRIP) != 0;
+        if (sShutterFrameHandValid[hand]) {
+            memcpy(sShutterPrevHandPos[hand], sShutterFrameHandPos[hand], sizeof(sShutterPrevHandPos[hand]));
+            sShutterPrevHandValid[hand] = true;
+        }
+        sShutterFrameHandValid[hand] = HandPosition(hand, sShutterFrameHandPos[hand]);
+        if (!sShutterPrevHandValid[hand] && sShutterFrameHandValid[hand]) {
+            memcpy(sShutterPrevHandPos[hand], sShutterFrameHandPos[hand], sizeof(sShutterPrevHandPos[hand]));
+            sShutterPrevHandValid[hand] = true;
+        }
+    }
+}
+
 } // namespace
 
 extern "C" bool VrJabuDoor_Tick(DoorShutter* door, PlayState* play) {
@@ -634,69 +699,188 @@ extern "C" bool VrJabuDoor_Tick(DoorShutter* door, PlayState* play) {
     if ((sJabuLatchDoor != nullptr && sJabuLatchDoor != door) ||
         (sShutterLatchDoor != nullptr && sShutterLatchDoor != door)) return false;
 
+    // Jabu and rigid shutters share the rendered open-palm state. Initialize that state before
+    // either actor class writes it; otherwise an actor from the newly preloaded adjacent room can
+    // reset the membrane's hover later in this same update frame, before Player_Draw consumes it.
+    BeginShutterInputFrame(play);
+
     Player* player = GET_PLAYER(play);
     const float s = Math_SinS(door->dyna.actor.shape.rot.y);
     const float c = Math_CosS(door->dyna.actor.shape.rot.y);
-    bool touching = false;
-    for (int hand = 0; hand < 2; ++hand) {
-        float p[3];
-        if (!HandPosition(hand, p)) {
-            sJabuNear[hand] = false;
-            continue;
-        }
-        const float dx = p[0] - door->dyna.actor.world.pos.x;
-        const float dy = p[1] - (door->dyna.actor.world.pos.y + 80.0f);
-        const float dz = p[2] - door->dyna.actor.world.pos.z;
-        const float localX = dx * c - dz * s;
-        const float localZ = dx * s + dz * c;
-        sJabuNear[hand] = fabsf(localZ) <= 18.0f && fabsf(dy) <= 75.0f && fabsf(localX) <= 70.0f;
-        if (sJabuNear[hand]) {
-            touching = true;
-            if (!sJabuLatched[hand]) {
-                sJabuLatched[hand] = true;
-                sJabuLatchDoor = door;
-                VR_TriggerHaptic(hand, 0.3f, 0.0f, 25.0f);
-            }
-        } else {
-            sJabuLatched[hand] = false;
-        }
-    }
-
-    if (!touching) {
-        if (sJabuDoor == door && !sShutterTransition.requested) sJabuDoor = nullptr;
-        if (!sJabuLatched[0] && !sJabuLatched[1] && !sShutterTransition.requested) sJabuLatchDoor = nullptr;
-        return false;
-    }
-
     const float pdx = player->actor.world.pos.x - door->dyna.actor.world.pos.x;
     const float pdz = player->actor.world.pos.z - door->dyna.actor.world.pos.z;
     const float entrySide = (pdx * s + pdz * c) >= 0.0f ? 1.0f : -1.0f;
-    if (!sShutterTransition.requested) {
-        if (!BeginDoorwayTransition(sShutterTransition, &door->dyna.actor, play, entrySide, false)) {
-            return false;
-        }
+
+    // Match ordinary physical doors: proximity owns room streaming, while physical contact alone
+    // owns opening. This removes loading latency from the touch without activating the membrane.
+    if (!sShutterTransition.requested && door->dyna.actor.xzDistToPlayer < 90.0f &&
+        BeginDoorwayTransition(sShutterTransition, &door->dyna.actor, play, entrySide, false)) {
+        sShutterEntryRoom = sShutterTransition.entryRoom;
         sJabuDoor = door;
         sShutterStreamDoor = door;
         sShutterRoomRequested = true;
         sShutterEntrySide = entrySide;
     }
-    if (play->roomCtx.status != 0) return false;
 
+    bool grabbed = false;
+    for (int hand = 0; hand < 2; ++hand) {
+        float handMtx[4][4];
+        if (!VR_GetHandMatrix(hand, handMtx)) {
+            sJabuNear[hand] = false;
+            sJabuLatched[hand] = false;
+            continue;
+        }
+        const float originX = handMtx[3][0];
+        const float originY = handMtx[3][1];
+        const float originZ = handMtx[3][2];
+        const float originDx = originX - door->dyna.actor.world.pos.x;
+        const float originDz = originZ - door->dyna.actor.world.pos.z;
+        const float originLocalX = originDx * c - originDz * s;
+        const float originLocalY = originY - door->dyna.actor.world.pos.y;
+        const float originLocalZ = originDx * s + originDz * c;
+        const float length = VrHand_ChildSized() ? 548.0f : 862.0f;
+        const float tipX = handMtx[3][0] + handMtx[0][0] * length;
+        const float tipY = handMtx[3][1] + handMtx[0][1] * length;
+        const float tipZ = handMtx[3][2] + handMtx[0][2] * length;
+        const float tipDx = tipX - door->dyna.actor.world.pos.x;
+        const float tipDz = tipZ - door->dyna.actor.world.pos.z;
+        const float tipLocalX = tipDx * c - tipDz * s;
+        const float tipLocalY = tipY - door->dyna.actor.world.pos.y;
+        const float tipLocalZ = tipDx * s + tipDz * c;
+
+        // Treat the rendered hand as a continuous wrist-to-fingertip segment. The previous three
+        // point samples could straddle this thin plane (for example +40 and -40) without either
+        // point entering the 28-unit hover band, even though the visible palm crossed the flesh.
+        const float segmentZ = tipLocalZ - originLocalZ;
+        const float planeT = fabsf(segmentZ) > 0.0001f
+                                 ? fmaxf(0.0f, fminf(1.0f, -originLocalZ / segmentZ))
+                                 : 0.5f;
+        float contactX = originLocalX + (tipLocalX - originLocalX) * planeT;
+        float contactY = originLocalY + (tipLocalY - originLocalY) * planeT;
+        float contactZ = originLocalZ + segmentZ * planeT;
+
+        // If the closest point to the plane misses the round membrane, test a dense set along the
+        // visible mesh and retain the valid point nearest the plane. This also covers a hand lying
+        // almost parallel against the membrane rather than pointing through it.
+        // The closed iris is eight petals translated roughly 80-99 model units away from the
+        // centre before rotation. Its visible/contactable surface therefore spans the complete
+        // doorway, not merely the small central overlap where the petal tips meet.
+        constexpr float kMembraneRadius = 180.0f;
+        constexpr float kMembraneHoverDepth = 36.0f;
+        bool insideMembrane = false;
+        float closest = FLT_MAX;
+        for (int point = 0; point <= 10; ++point) {
+            const float t = point == 0 ? planeT : (point - 1) * 0.1f;
+            const float x = originLocalX + (tipLocalX - originLocalX) * t;
+            const float y = originLocalY + (tipLocalY - originLocalY) * t;
+            const float z = originLocalZ + segmentZ * t;
+            const float radialX = x / kMembraneRadius;
+            const float radialY = (y - 80.0f) / kMembraneRadius;
+            if (radialX * radialX + radialY * radialY <= 1.0f && fabsf(z) < closest) {
+                insideMembrane = true;
+                closest = fabsf(z);
+                contactX = x;
+                contactY = y;
+                contactZ = z;
+            }
+        }
+        const bool isNear = insideMembrane && fabsf(contactZ) <= kMembraneHoverDepth;
+        sJabuNear[hand] = isNear;
+        sJabuLatched[hand] = isNear && sShutterGripNow[hand];
+        if (!isNear) continue;
+
+        // Keep the contact on the player's side even after the controller penetrates the thin
+        // mathematical plane. Deriving the face from contactZ made the pinned hand jump through
+        // the membrane as soon as that value crossed zero.
+        const float face = entrySide;
+        ShutterHandState& state = sShutterHandState[hand];
+        state.door = door;
+        state.frame = play->state.frames;
+        state.active = true;
+        state.latched = sJabuLatched[hand];
+        state.score = fabsf(contactZ);
+        state.localX = contactX;
+        state.localY = contactY;
+        const float clearance = state.latched ? kShutterGrabClearance : kShutterHoverOffset;
+        const float handAxisScale = sqrtf(handMtx[0][0] * handMtx[0][0] + handMtx[0][1] * handMtx[0][1] +
+                                          handMtx[0][2] * handMtx[0][2]);
+        const float handHalfLength = handAxisScale * length * 0.5f;
+        const float radialDistance =
+            sqrtf(contactX * contactX + (contactY - 80.0f) * (contactY - 80.0f)) + handHalfLength;
+        const float radialAmount = fmaxf(0.0f, fminf(1.0f, radialDistance / kMembraneRadius));
+        // The iris petals bow toward the player away from their central overlap. Follow that
+        // contour quadratically and use the palm's outer edge, not just its centre, so the lower
+        // fingers cannot disappear into the curved membrane.
+        const float membraneDepth = 20.0f * radialAmount * radialAmount;
+        state.localZ = originLocalZ + (face * (clearance + membraneDepth) - contactZ);
+        state.surfaceFace = face;
+        state.visualFace = face;
+        if (state.latched) grabbed = true;
+    }
+
+    if (!grabbed) {
+        // Release a completed proximity preload if the player walks away without touching.
+        if (sJabuDoor == door && sJabuLatchDoor != door && door->dyna.actor.xzDistToPlayer > 130.0f &&
+            play->roomCtx.status == 0) {
+            FinishDoorwayTransition(sShutterTransition, play, sShutterEntrySide, false);
+            sJabuDoor = nullptr;
+            sShutterStreamDoor = nullptr;
+            sShutterRoomRequested = false;
+        }
+        return false;
+    }
+
+    if (!BeginDoorwayTransition(sShutterTransition, &door->dyna.actor, play, entrySide, false)) {
+        return false;
+    }
+    sJabuDoor = door;
+    sJabuLatchDoor = door;
+    sShutterStreamDoor = door;
+    sShutterRoomRequested = true;
+    sShutterEntrySide = entrySide;
+    sShutterEntryRoom = sShutterTransition.entryRoom;
+    for (int hand = 0; hand < 2; ++hand) {
+        if (sJabuLatched[hand]) VR_TriggerHaptic(hand, 0.3f, 0.0f, 25.0f);
+    }
     // From this point the membrane uses the same open/cross/close lifecycle as every rigid shutter.
-    // Only its activation differs: an open palm touching the flesh replaces the two-hand lift.
+    // Start the visible iris response immediately; collision passage remains gated separately on
+    // both completed room loading and sufficient visual retraction.
     sShutterLatchDoor = door;
     sShutterFullyOpen = true;
     sShutterCloseRollbackPending = false;
-    for (int hand = 0; hand < 2; ++hand) {
-        if (sJabuLatched[hand]) {
-            VR_TriggerHaptic(hand, 0.3f, 0.0f, 25.0f);
-        }
-    }
     return true;
 }
 
+extern "C" void VrJabuDoor_Cancel(DoorShutter* door, PlayState* play) {
+    if (door == nullptr || play == nullptr) return;
+    if (sJabuDoor != door && sJabuLatchDoor != door) return;
+    if (sShutterTransition.owner == &door->dyna.actor && sShutterTransition.requested) {
+        if (play->roomCtx.status != 0) return;
+        FinishDoorwayTransition(sShutterTransition, play, sShutterEntrySide, false);
+    }
+    if (sShutterStreamDoor == door) {
+        sShutterStreamDoor = nullptr;
+        sShutterRoomRequested = false;
+    }
+    if (sShutterLatchDoor == door) {
+        sShutterLatchDoor = nullptr;
+        sShutterFullyOpen = false;
+        sShutterCloseRollbackPending = false;
+        sShutterCloseForNextDoor = false;
+    }
+    if (sShutterCandidate == door) sShutterCandidate = nullptr;
+    if (sShutterDoor == door) sShutterDoor = nullptr;
+    for (int hand = 0; hand < 2; ++hand) {
+        if (sShutterHandState[hand].door == door) sShutterHandState[hand] = {};
+    }
+    sJabuDoor = nullptr;
+    sJabuLatchDoor = nullptr;
+    sJabuNear[0] = sJabuNear[1] = false;
+    sJabuLatched[0] = sJabuLatched[1] = false;
+}
+
 extern "C" bool VrJabuDoor_GripConsumed(int32_t hand, uint16_t mask) {
-    return false;
+    return (mask & VR_BTN_GRIP) && hand >= 0 && hand < 2 && (sJabuNear[hand] || sJabuLatched[hand]);
 }
 
 extern "C" int32_t VrShutter_Tick(DoorShutter* door, PlayState* play) {
@@ -738,31 +922,7 @@ extern "C" int32_t VrShutter_Tick(DoorShutter* door, PlayState* play) {
 
     // Every shutter actor ticks independently. Sample grip edges once per game frame so a distant
     // shutter cannot consume the press before the door under the player's hands sees it.
-    if (sShutterInputFrame != play->state.frames) {
-        sShutterInputFrame = play->state.frames;
-        if (sShutterLatchDoor == nullptr) {
-            sShutterCandidate = nullptr;
-        }
-        for (int hand = 0; hand < 2; ++hand) {
-            const ShutterHandState previous = sShutterHandState[hand];
-            const bool previousFrame = previous.frame != UINT32_MAX && previous.frame + 1 == play->state.frames;
-            sShutterPrevHoverDoor[hand] =
-                previousFrame && previous.active && !previous.latched ? previous.door : nullptr;
-            sShutterPrevHoverFace[hand] = previous.surfaceFace;
-            sShutterHandState[hand] = {};
-            sShutterHandState[hand].frame = play->state.frames;
-            sShutterGripNow[hand] = (VR_GetControllerButton(hand) & VR_BTN_GRIP) != 0;
-            if (sShutterFrameHandValid[hand]) {
-                memcpy(sShutterPrevHandPos[hand], sShutterFrameHandPos[hand], sizeof(sShutterPrevHandPos[hand]));
-                sShutterPrevHandValid[hand] = true;
-            }
-            sShutterFrameHandValid[hand] = HandPosition(hand, sShutterFrameHandPos[hand]);
-            if (!sShutterPrevHandValid[hand] && sShutterFrameHandValid[hand]) {
-                memcpy(sShutterPrevHandPos[hand], sShutterFrameHandPos[hand], sizeof(sShutterPrevHandPos[hand]));
-                sShutterPrevHandValid[hand] = true;
-            }
-        }
-    }
+    BeginShutterInputFrame(play);
 
     // Releasing a grabbed door before lifting it restores the room the player still occupies.
     // This is a streaming operation, not a physical close, so it deliberately has no door sound.
@@ -934,6 +1094,7 @@ extern "C" int32_t VrShutter_Tick(DoorShutter* door, PlayState* play) {
         play->roomCtx.prevRoom.num < 0) {
         const float entrySide = playerAcross >= 0.0f ? 1.0f : -1.0f;
         if (BeginDoorwayTransition(sShutterTransition, &door->dyna.actor, play, entrySide, false)) {
+            sShutterEntryRoom = sShutterTransition.entryRoom;
             sShutterRoomRequested = true;
             sShutterStreamDoor = door;
             sShutterEntrySide = entrySide;
@@ -1059,6 +1220,8 @@ extern "C" bool VrShutter_KeepOpen(DoorShutter* door, PlayState* play) {
         sShutterHandState[0] = {};
         sShutterHandState[1] = {};
         sShutterLatched[0] = sShutterLatched[1] = false;
+        sShutterClosingRenderDoor = door;
+        sShutterClosingRenderFlipped = VrShutter_RenderFlipped(door, play);
         return false;
     }
     if (sShutterCloseForNextDoor) {
@@ -1068,6 +1231,8 @@ extern "C" bool VrShutter_KeepOpen(DoorShutter* door, PlayState* play) {
         sShutterHandState[0] = {};
         sShutterHandState[1] = {};
         sShutterLatched[0] = sShutterLatched[1] = false;
+        sShutterClosingRenderDoor = door;
+        sShutterClosingRenderFlipped = VrShutter_RenderFlipped(door, play);
         return false;
     }
     if (door->dyna.actor.xzDistToPlayer < 70.0f) return true;
@@ -1079,20 +1244,58 @@ extern "C" bool VrShutter_KeepOpen(DoorShutter* door, PlayState* play) {
     sShutterHandState[0] = {};
     sShutterHandState[1] = {};
     sShutterLatched[0] = sShutterLatched[1] = false;
+    sShutterClosingRenderDoor = door;
+    sShutterClosingRenderFlipped = VrShutter_RenderFlipped(door, play);
     return false;
+}
+
+extern "C" bool VrShutter_IsPhysicalClosePending(DoorShutter* door) {
+    return door != nullptr && door == sShutterLatchDoor && sShutterFullyOpen &&
+           sShutterCloseRollbackPending;
+}
+
+extern "C" int32_t VrShutter_GetPhysicalCloseRoom(DoorShutter* door, PlayState* play) {
+    if (!VrShutter_IsPhysicalClosePending(door) || play == nullptr || sShutterEntryRoom < 0) return -1;
+    Player* player = GET_PLAYER(play);
+    const float sn = Math_SinS(door->dyna.actor.shape.rot.y);
+    const float cs = Math_CosS(door->dyna.actor.shape.rot.y);
+    const float dx = player->actor.world.pos.x - door->dyna.actor.world.pos.x;
+    const float dz = player->actor.world.pos.z - door->dyna.actor.world.pos.z;
+    const float closeSide = (dx * sn + dz * cs) >= 0.0f ? 1.0f : -1.0f;
+    if (closeSide == sShutterEntrySide) return sShutterEntryRoom;
+    const TransitionActorEntry* entry =
+        &play->transiActorCtx.list[GET_TRANSITION_ACTOR_INDEX(&door->dyna.actor)];
+    return entry->sides[0].room == sShutterEntryRoom ? entry->sides[1].room : entry->sides[0].room;
+}
+
+extern "C" bool VrShutter_GetClosingRenderFlipped(const DoorShutter* door, bool* flipped) {
+    if (door == nullptr || flipped == nullptr || door != sShutterClosingRenderDoor) return false;
+    *flipped = sShutterClosingRenderFlipped;
+    return true;
 }
 
 extern "C" void VrShutter_FinishClose(DoorShutter* door, PlayState* play) {
     if (door == nullptr || play == nullptr || door != sShutterLatchDoor || !sShutterCloseRollbackPending) return;
-    if (sShutterRoomRequested && play->roomCtx.status == 0 && play->roomCtx.prevRoom.num >= 0) {
-        Player* player = GET_PLAYER(play);
-        const float sn = Math_SinS(door->dyna.actor.shape.rot.y);
-        const float cs = Math_CosS(door->dyna.actor.shape.rot.y);
-        const float dx = player->actor.world.pos.x - door->dyna.actor.world.pos.x;
-        const float dz = player->actor.world.pos.z - door->dyna.actor.world.pos.z;
-        const float side = (dx * sn + dz * cs) >= 0.0f ? 1.0f : -1.0f;
-        FinishDoorwayTransition(sShutterTransition, play, side, false);
+    Player* player = GET_PLAYER(play);
+    const float sn = Math_SinS(door->dyna.actor.shape.rot.y);
+    const float cs = Math_CosS(door->dyna.actor.shape.rot.y);
+    const float dx = player->actor.world.pos.x - door->dyna.actor.world.pos.x;
+    const float dz = player->actor.world.pos.z - door->dyna.actor.world.pos.z;
+    const float closeSide = (dx * sn + dz * cs) >= 0.0f ? 1.0f : -1.0f;
+    int closeRoom = sShutterEntryRoom;
+    if (closeSide != sShutterEntrySide) {
+        const TransitionActorEntry* entry =
+            &play->transiActorCtx.list[GET_TRANSITION_ACTOR_INDEX(&door->dyna.actor)];
+        closeRoom = entry->sides[0].room == sShutterEntryRoom ? entry->sides[1].room : entry->sides[0].room;
     }
+    if (sShutterRoomRequested && play->roomCtx.status == 0 && play->roomCtx.prevRoom.num >= 0) {
+        FinishDoorwayTransition(sShutterTransition, play, closeSide, false);
+    }
+    // If Link backed away and the shutter returned to the side where an unlock condition had
+    // already made it physically usable, do not let room streaming transiently revoke that earned
+    // state. Crossing the doorway deliberately does not preserve it: the destination side keeps
+    // its native lock-behind/bar rule.
+    sShutterPreservedEntryUnlockDoor = closeSide == sShutterEntrySide ? door : nullptr;
     door->dyna.actor.room = play->roomCtx.curRoom.num;
     sShutterJustClosedDoor = door;
     sShutterLatchDoor = nullptr;
@@ -1103,11 +1306,23 @@ extern "C" void VrShutter_FinishClose(DoorShutter* door, PlayState* play) {
     sShutterStreamDoor = nullptr;
     sShutterCloseRollbackPending = false;
     sShutterCloseForNextDoor = false;
+    sShutterClosingRenderDoor = nullptr;
+    if (sJabuDoor == door || sJabuLatchDoor == door) {
+        sJabuDoor = sJabuLatchDoor = nullptr;
+        sJabuNear[0] = sJabuNear[1] = false;
+        sJabuLatched[0] = sJabuLatched[1] = false;
+    }
 }
 
 extern "C" bool VrShutter_ConsumePhysicalClose(DoorShutter* door) {
     if (door == nullptr || door != sShutterJustClosedDoor) return false;
     sShutterJustClosedDoor = nullptr;
+    return true;
+}
+
+extern "C" bool VrShutter_ConsumePreservedEntryUnlock(DoorShutter* door) {
+    if (door == nullptr || door != sShutterPreservedEntryUnlockDoor) return false;
+    sShutterPreservedEntryUnlockDoor = nullptr;
     return true;
 }
 
@@ -1391,7 +1606,9 @@ extern "C" bool VrDoor_GripConsumed(int32_t hand, uint16_t mask) {
 
 extern "C" bool VrDoor_KeepPreviousRoomActors(void) {
     const bool ordinaryDoorStreaming = sDoor != nullptr && sRoomRequested;
-    const bool shutterStreaming = (sShutterCandidate != nullptr || sShutterLatchDoor != nullptr) && sShutterRoomRequested;
+    const bool shutterStreaming =
+        (sShutterCandidate != nullptr || sShutterLatchDoor != nullptr || sJabuDoor != nullptr) &&
+        sShutterRoomRequested;
     return (ordinaryDoorStreaming || shutterStreaming) && gPlayState != nullptr &&
            CVarGetInteger("gVrPhysicalDoors", 1) && VR_IsInitialized() && !VR_IsFlatScreen();
 }
@@ -1437,7 +1654,10 @@ extern "C" bool VrDoor_AllowsWallPass(Actor* actor, const float* nextPos3, const
         actor != &GET_PLAYER(gPlayState)->actor) {
         return false;
     }
-    if (sShutterLatchDoor != nullptr && sShutterFullyOpen && sShutterRoomRequested && gPlayState->roomCtx.status == 0) {
+    if (sShutterLatchDoor != nullptr && sShutterFullyOpen && sShutterRoomRequested && gPlayState->roomCtx.status == 0 &&
+        // Jabu's ownership becomes active before its ten-frame iris animation. Keep the scene wall
+        // solid until the membrane is substantially retracted instead of walking through its image.
+        (sShutterLatchDoor->gfxType != 3 || sShutterLatchDoor->jabuDoorClosedAmount <= 20)) {
         const float sn = Math_SinS(sShutterLatchDoor->dyna.actor.shape.rot.y);
         const float cs = Math_CosS(sShutterLatchDoor->dyna.actor.shape.rot.y);
         const float* points[2] = { nextPos3, prevPos3 };
