@@ -13,19 +13,32 @@ void VrDoor_ResetRetainedObjects(void);
 
 #include "VrCombat.h"
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
+#include "soh/ResourceManagerHelpers.h"
 #include "soh/ShipInit.hpp"
 #include "soh/frame_interpolation.h"
+#include <ship/Context.h>
+#include <ship/resource/ResourceManager.h>
+#include <fast/resource/type/DisplayList.h>
+#include <fast/resource/type/Vertex.h>
+#include <libultraship/bridge/resourcebridge.h>
 #include <libultraship/bridge/consolevariablebridge.h>
+#include <algorithm>
+#include <array>
 #include <vr_interface.h>
 #include <cfloat>
 #include <cmath>
 #include <cstring>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 // Physical ordinary doors. En_Door's skeleton offsets the rotating hierarchy by 2700 model units
 // (27 world units) before applying limb 3's opening rotation. We keep all geometry in the actor's
 // closed-door frame, then write the same limb rotation channel used by the stock animation.
 namespace {
 constexpr float kTurnDeg = 22.0f;
+constexpr float kPi = 3.14159265358979323846f;
 constexpr float kMaxOpenDeg = 90.0f;
 constexpr float kExitDeg = 55.0f;
 // Unlock the doorway early enough that a door pushed away from the player can be walked around
@@ -83,6 +96,7 @@ struct ShutterHandState {
     float score = FLT_MAX;
     float localX = 0.0f;
     float localY = 0.0f;
+    float localZ = 0.0f;
     float surfaceFace = 1.0f;
     float visualFace = 1.0f;
 };
@@ -174,8 +188,177 @@ void FinishDoorwayTransition(PhysicalDoorwayTransition& transition, PlayState* p
     SetDoorwayActorRoom(transition.owner, play->roomCtx.curRoom.num, includeRelatives);
     transition = {};
 }
-constexpr float kShutterSurface = 12.0f;
 constexpr float kBossShutterRaisedHeight = 240.0f;
+constexpr float kShutterHoverOffset = 2.0f;
+constexpr float kShutterGrabClearance = 0.75f;
+
+struct ShutterSurfacePoint {
+    float x;
+    float y;
+    float z;
+    bool valid = false;
+};
+
+struct ShutterSurfaceTriangle {
+    ShutterSurfacePoint p[3];
+};
+
+std::unordered_map<std::string, std::vector<ShutterSurfaceTriangle>> sShutterSurfaceCache;
+
+void AddSurfaceTriangle(std::vector<ShutterSurfaceTriangle>& triangles,
+                        const std::array<ShutterSurfacePoint, 32>& slots, int a, int b, int c) {
+    if (a < 0 || b < 0 || c < 0 || a >= static_cast<int>(slots.size()) ||
+        b >= static_cast<int>(slots.size()) || c >= static_cast<int>(slots.size()) ||
+        !slots[a].valid || !slots[b].valid || !slots[c].valid) {
+        return;
+    }
+    triangles.push_back({ slots[a], slots[b], slots[c] });
+}
+
+void AppendDisplayListTriangles(const std::string& path, std::vector<ShutterSurfaceTriangle>& triangles,
+                                std::array<ShutterSurfacePoint, 32>& slots, int recursionDepth) {
+    if (recursionDepth > 16) return;
+    auto resourceManager = Ship::Context::GetRawInstance()->GetResourceManager();
+    ResourceMgr_UnloadOriginalWhenAltExists(path.c_str());
+    auto displayList = std::dynamic_pointer_cast<Fast::DisplayList>(resourceManager->LoadResourceProcess(path));
+    if (displayList == nullptr) return;
+    for (size_t i = 0; i < displayList->Instructions.size(); ++i) {
+        const Gfx& command = displayList->Instructions[i];
+        const int8_t opcode = static_cast<int8_t>(command.words.w0 >> 24);
+        const char* resourcePath = nullptr;
+        const bool vertexHash = opcode == G_VTX_OTR_HASH;
+        const bool displayListHash = opcode == G_DL_OTR_HASH;
+        size_t vertexCount = 0;
+        size_t vertexOffset = 0;
+        size_t vertexSlot = 0;
+        const Vtx* directVertices = nullptr;
+        if ((vertexHash || displayListHash) && i + 1 < displayList->Instructions.size()) {
+            const Gfx& hashWords = displayList->Instructions[++i];
+            const uint64_t hash = (static_cast<uint64_t>(hashWords.words.w0) << 32) | hashWords.words.w1;
+            resourcePath = ResourceGetNameByCrc(hash);
+            if (vertexHash) {
+                vertexCount = _SHIFTR(command.words.w0, 12, 8);
+                vertexSlot = _SHIFTR(command.words.w0, 1, 7) - vertexCount;
+                // The renderer patches this field to a live vertex pointer after first use.
+                // Before that happens it is a byte offset into the referenced resource.
+                if (command.words.w1 > 0xFFFFF) {
+                    directVertices = reinterpret_cast<const Vtx*>(command.words.w1);
+                } else {
+                    vertexOffset = command.words.w1 / sizeof(Vtx);
+                }
+            }
+        } else if (opcode == G_VTX_OTR_FILEPATH || opcode == G_DL_OTR_FILEPATH) {
+            resourcePath = reinterpret_cast<const char*>(command.words.w1);
+            if (opcode == G_VTX_OTR_FILEPATH && i + 1 < displayList->Instructions.size()) {
+                const Gfx& range = displayList->Instructions[++i];
+                vertexCount = range.words.w0;
+                vertexSlot = range.words.w1 >> 16;
+                vertexOffset = range.words.w1 & 0xFFFF;
+            }
+        }
+        if (vertexHash || opcode == G_VTX_OTR_FILEPATH) {
+            if (directVertices != nullptr) {
+                for (size_t vertexIndex = 0; vertexIndex < vertexCount; ++vertexIndex) {
+                    const Vtx& vertex = directVertices[vertexIndex];
+                    const size_t slot = vertexSlot + vertexIndex;
+                    if (slot >= slots.size()) break;
+                    slots[slot] = { static_cast<float>(vertex.v.ob[0]), static_cast<float>(vertex.v.ob[1]),
+                                    static_cast<float>(vertex.v.ob[2]), true };
+                }
+            } else if (resourcePath != nullptr) {
+                ResourceMgr_UnloadOriginalWhenAltExists(resourcePath);
+                auto vertexResource =
+                    std::dynamic_pointer_cast<Fast::Vertex>(resourceManager->LoadResourceProcess(resourcePath));
+                if (vertexResource == nullptr) continue;
+                const size_t end = vertexCount == 0
+                                       ? vertexResource->VertexList.size()
+                                       : std::min(vertexOffset + vertexCount, vertexResource->VertexList.size());
+                for (size_t vertexIndex = vertexOffset; vertexIndex < end; ++vertexIndex) {
+                    const Vtx& vertex = vertexResource->VertexList[vertexIndex];
+                    const size_t slot = vertexSlot + vertexIndex - vertexOffset;
+                    if (slot >= slots.size()) break;
+                    slots[slot] = { static_cast<float>(vertex.v.ob[0]), static_cast<float>(vertex.v.ob[1]),
+                                    static_cast<float>(vertex.v.ob[2]), true };
+                }
+            }
+        } else if ((displayListHash || opcode == G_DL_OTR_FILEPATH) && resourcePath != nullptr) {
+            AppendDisplayListTriangles(resourcePath, triangles, slots, recursionDepth + 1);
+        } else if (opcode == G_TRI1_OTR) {
+            AddSurfaceTriangle(triangles, slots, _SHIFTR(command.words.w0, 0, 16),
+                               _SHIFTR(command.words.w1, 16, 16), _SHIFTR(command.words.w1, 0, 16));
+        } else if (opcode == G_TRI1) {
+            AddSurfaceTriangle(triangles, slots, _SHIFTR(command.words.w1, 16, 8) / 2,
+                               _SHIFTR(command.words.w1, 8, 8) / 2, _SHIFTR(command.words.w1, 0, 8) / 2);
+        } else if (opcode == G_TRI2) {
+            AddSurfaceTriangle(triangles, slots, _SHIFTR(command.words.w0, 16, 8) / 2,
+                               _SHIFTR(command.words.w0, 8, 8) / 2, _SHIFTR(command.words.w0, 0, 8) / 2);
+            AddSurfaceTriangle(triangles, slots, _SHIFTR(command.words.w1, 16, 8) / 2,
+                               _SHIFTR(command.words.w1, 8, 8) / 2, _SHIFTR(command.words.w1, 0, 8) / 2);
+        }
+    }
+}
+
+const std::vector<ShutterSurfaceTriangle>& ShutterSurfaceTriangles(const DoorShutter* door) {
+    static const std::vector<ShutterSurfaceTriangle> empty;
+    const char* path = VrShutter_GetDisplayListPath(door);
+    if (path == nullptr || path[0] == '\0') return empty;
+    auto resourceManager = Ship::Context::GetRawInstance()->GetResourceManager();
+    // Alternate models retain the logical display-list path, so include the active asset mode in
+    // the cache identity. Toggling an enhancement pack must never reuse the stock model's surface.
+    const std::string cacheKey = std::string(resourceManager->IsAltAssetsEnabled() ? "alt:" : "base:") + path;
+    auto cached = sShutterSurfaceCache.find(cacheKey);
+    if (cached != sShutterSurfaceCache.end()) return cached->second;
+
+    std::vector<ShutterSurfaceTriangle> triangles;
+    std::array<ShutterSurfacePoint, 32> slots = {};
+    AppendDisplayListTriangles(path, triangles, slots, 0);
+    return sShutterSurfaceCache.emplace(cacheKey, std::move(triangles)).first->second;
+}
+
+float ShutterSurfaceDepth(const DoorShutter* door, float localX, float localY, float face, bool* found = nullptr) {
+    const auto& triangles = ShutterSurfaceTriangles(door);
+    float bestDepth = -FLT_MAX;
+    for (const auto& triangle : triangles) {
+        const float x0 = triangle.p[0].x, y0 = triangle.p[0].y;
+        const float x1 = triangle.p[1].x, y1 = triangle.p[1].y;
+        const float x2 = triangle.p[2].x, y2 = triangle.p[2].y;
+        const float denominator = (y1 - y2) * (x0 - x2) + (x2 - x1) * (y0 - y2);
+        if (fabsf(denominator) < 0.0001f) continue;
+        const float a = ((y1 - y2) * (localX - x2) + (x2 - x1) * (localY - y2)) / denominator;
+        const float b = ((y2 - y0) * (localX - x2) + (x0 - x2) * (localY - y2)) / denominator;
+        const float c = 1.0f - a - b;
+        if (a < -0.001f || b < -0.001f || c < -0.001f) continue;
+        const float depth = (a * triangle.p[0].z + b * triangle.p[1].z + c * triangle.p[2].z) * face;
+        if (depth >= 0.0f) bestDepth = fmaxf(bestDepth, depth);
+    }
+    if (found != nullptr) *found = bestDepth != -FLT_MAX;
+    return bestDepth != -FLT_MAX ? bestDepth : 12.0f;
+}
+
+float ShutterHandSurfaceDepth(const DoorShutter* door, float centerX, float centerY, float face,
+                              bool renderFlipped, float halfWidth, float halfLength) {
+    const float modelFace = renderFlipped ? -face : face;
+    const auto sampleDepth = [&](float x, float y, bool* found = nullptr) {
+        return ShutterSurfaceDepth(door, renderFlipped ? -x : x, y, modelFace, found);
+    };
+
+    // Constrain the entire open-hand footprint, not only its centreline. Five rows cover the wrist,
+    // palm and fingertips; three columns cover both outside fingers. Taking the outermost surface
+    // prevents any part of the planar hand pose from entering curved or decorated replacement doors.
+    float requiredDepth = sampleDepth(centerX, centerY);
+    constexpr float across[] = { -1.0f, 0.0f, 1.0f };
+    constexpr float along[] = { -1.0f, -0.5f, 0.0f, 0.5f, 1.0f };
+    for (float xFactor : across) {
+        for (float yFactor : along) {
+            bool found = false;
+            const float depth = sampleDepth(centerX + xFactor * halfWidth,
+                                            centerY + yFactor * halfLength, &found);
+            if (found) requiredDepth = fmaxf(requiredDepth, depth);
+        }
+    }
+    return requiredDepth;
+}
+
 constexpr float kShutterReleaseLiftMeters = 0.30f;
 
 bool ShutterLiftEligible(const DoorShutter* door) {
@@ -245,7 +428,7 @@ void HandlePoint(const EnDoor* door, float side, float face, float out[3]) {
     float localX = CVarGetFloat("gVrDoorHandleRight", 23.0f) * side;
     float localZ = CVarGetFloat("gVrDoorHandleDepth", 3.0f) * face;
     if (sDoor == door && sAngle != 0) {
-        const float a = sAngle * (2.0f * M_PI / 65536.0f);
+        const float a = sAngle * (2.0f * kPi / 65536.0f);
         const float hingeOffset = HingeOffset();
         const float hingeX = localX >= 0.0f ? -hingeOffset : hingeOffset;
         const float relX = localX - hingeX;
@@ -293,7 +476,7 @@ float HandTurnDeg(int hand) {
     if (!HandPose(hand, p, q)) return 0.0f;
     float dot = fabsf(q[0] * sStartQuat[0] + q[1] * sStartQuat[1] + q[2] * sStartQuat[2] + q[3] * sStartQuat[3]);
     dot = fmaxf(0.0f, fminf(1.0f, dot));
-    return 2.0f * acosf(dot) * (180.0f / M_PI);
+    return 2.0f * acosf(dot) * (180.0f / kPi);
 }
 
 float HandPolar(const EnDoor* door, int hand, float side) {
@@ -620,9 +803,13 @@ extern "C" int32_t VrShutter_Tick(DoorShutter* door, PlayState* play) {
         const float localZ = dx * sn + dz * cs;
         const float localY = p[1] - door->dyna.actor.world.pos.y;
         float contactX = localX, contactY = localY, contactZ = localZ;
+        float handHalfLength = (VrHand_ChildSized() ? 548.0f : 862.0f) * 0.005f * VrHand_ScaleFactor();
         float handMtx[4][4];
         if (VR_GetHandMatrix(hand, handMtx)) {
             const float len = VrHand_ChildSized() ? 548.0f : 862.0f;
+            const float handScale = sqrtf(handMtx[0][0] * handMtx[0][0] + handMtx[0][1] * handMtx[0][1] +
+                                          handMtx[0][2] * handMtx[0][2]);
+            handHalfLength = handScale * len * 0.5f;
             float best = fabsf(localZ);
             for (int point = 0; point < 3; ++point) {
                 const float along = len * 0.5f * point;
@@ -641,8 +828,8 @@ extern "C" int32_t VrShutter_Tick(DoorShutter* door, PlayState* play) {
             }
         }
         handY[hand] = p[1];
-        const bool near = fabsf(contactX) <= grabHalfWidth && fabsf(contactZ) <= 28.0f &&
-                          contactY >= 20.0f && contactY <= 125.0f;
+        const bool isNear = fabsf(contactX) <= grabHalfWidth && fabsf(contactZ) <= 28.0f &&
+                            contactY >= 20.0f && contactY <= 125.0f;
         const float eyeDx = play->view.eye.x - door->dyna.actor.world.pos.x;
         const float eyeDz = play->view.eye.z - door->dyna.actor.world.pos.z;
         const float visualFace = (eyeDx * sn + eyeDz * cs) >= 0.0f ? 1.0f : -1.0f;
@@ -652,7 +839,7 @@ extern "C" int32_t VrShutter_Tick(DoorShutter* door, PlayState* play) {
         float hoverFace = bodyFace;
         if (sShutterPrevHoverDoor[hand] == door) {
             hoverFace = sShutterPrevHoverFace[hand];
-        } else if (near) {
+        } else if (isNear) {
             float approachFace = bodyFace;
             float prevLocalZ = localZ;
             if (sShutterPrevHandValid[hand]) {
@@ -679,9 +866,10 @@ extern "C" int32_t VrShutter_Tick(DoorShutter* door, PlayState* play) {
             state.score = 0.0f;
             state.localX = sShutterGrabLocal[hand][0];
             state.localY = sShutterGrabLocal[hand][1];
+            state.localZ = sShutterGrabFace[hand];
             state.surfaceFace = sShutterGrabFace[hand] >= 0.0f ? 1.0f : -1.0f;
             state.visualFace = state.surfaceFace;
-        } else if (near && (sShutterLatchDoor == nullptr || sShutterLatchDoor == door) &&
+        } else if (isNear && (sShutterLatchDoor == nullptr || sShutterLatchDoor == door) &&
                    fabsf(contactZ) < sShutterHandState[hand].score) {
             ShutterHandState& state = sShutterHandState[hand];
             state.door = door;
@@ -691,6 +879,15 @@ extern "C" int32_t VrShutter_Tick(DoorShutter* door, PlayState* play) {
             state.score = fabsf(contactZ);
             state.localX = contactX;
             state.localY = contactY;
+            const bool renderFlipped = VrShutter_RenderFlipped(door, play);
+            const float surfaceDepth = ShutterHandSurfaceDepth(door, contactX, contactY, hoverFace,
+                                                               renderFlipped, handHalfLength * 0.45f,
+                                                               handHalfLength);
+            const float surfaceZ = hoverFace * surfaceDepth;
+            // Preserve the measured offset from the hand transform to the sampled hand point.
+            // Placing the transform itself on the surface makes most of the rendered palm pass
+            // through the slab, especially when the closest sample is near the fingertips.
+            state.localZ = localZ + (surfaceZ + hoverFace * kShutterHoverOffset - contactZ);
             state.surfaceFace = hoverFace;
             state.visualFace = visualFace;
             sShutterCandidate = door;
@@ -698,16 +895,21 @@ extern "C" int32_t VrShutter_Tick(DoorShutter* door, PlayState* play) {
 
         // Grip only the owner resolved on the previous completed frame. This one-frame handover
         // removes actor-order dependence when two shutters share a compact room.
-        if (!sShutterLatched[hand] && grip[hand] && near && sShutterPrevHoverDoor[hand] == door &&
+        if (!sShutterLatched[hand] && grip[hand] && isNear && sShutterPrevHoverDoor[hand] == door &&
             (sShutterLatchDoor == nullptr || sShutterLatchDoor == door)) {
             sShutterLatchDoor = door;
             sShutterCandidate = door;
             sShutterLatched[hand] = true;
             sShutterLatchSide[hand] = contactX >= 0.0f ? 1.0f : -1.0f;
-            const float surface = hoverFace * kShutterSurface;
-            // As with climbing, snap the closest part of the rendered hand to the surface rather
-            // than putting the controller origin there. This keeps fingertips/palm out of the slab.
-            sShutterGrabFace[hand] = localZ + (surface - contactZ);
+            // Hover just above the face, then let the palm settle slightly into it on grip so the
+            // contact reads as weight-bearing instead of floating or passing through the slab.
+            const bool renderFlipped = VrShutter_RenderFlipped(door, play);
+            const float surfaceDepth = ShutterHandSurfaceDepth(door, contactX, contactY, hoverFace,
+                                                               renderFlipped, handHalfLength * 0.45f,
+                                                               handHalfLength);
+            const float surfaceZ = hoverFace * surfaceDepth;
+            sShutterGrabFace[hand] =
+                localZ + (surfaceZ + hoverFace * kShutterGrabClearance - contactZ);
             sShutterGrabLocal[hand][0] = localX;
             sShutterGrabLocal[hand][1] = localY;
             ShutterHandState& state = sShutterHandState[hand];
@@ -718,6 +920,7 @@ extern "C" int32_t VrShutter_Tick(DoorShutter* door, PlayState* play) {
             state.score = 0.0f;
             state.localX = localX;
             state.localY = localY;
+            state.localZ = sShutterGrabFace[hand];
             state.surfaceFace = sShutterGrabFace[hand] >= 0.0f ? 1.0f : -1.0f;
             state.visualFace = state.surfaceFace;
             VR_TriggerHaptic(hand, 0.3f, 0.0f, 25.0f);
@@ -920,8 +1123,7 @@ extern "C" bool VrShutter_PinnedHandMatrix(Player* player, int32_t hand, float* 
     DoorShutter* door = state.door;
     const float sn = Math_SinS(door->dyna.actor.shape.rot.y);
     const float cs = Math_CosS(door->dyna.actor.shape.rot.y);
-    const auto placeOpenPalm = [&](float localX, float localY, float orientationSide, float surfaceSide,
-                                   float faceOffset) {
+    const auto placeOpenPalm = [&](float localX, float localY, float localZ, float orientationSide) {
         const float sx = sqrtf(mf16[0] * mf16[0] + mf16[1] * mf16[1] + mf16[2] * mf16[2]);
         const float sy = sqrtf(mf16[4] * mf16[4] + mf16[5] * mf16[5] + mf16[6] * mf16[6]);
         const float sz = sqrtf(mf16[8] * mf16[8] + mf16[9] * mf16[9] + mf16[10] * mf16[10]);
@@ -939,16 +1141,14 @@ extern "C" bool VrShutter_PinnedHandMatrix(Player* player, int32_t hand, float* 
         mf16[10] = orientationSide * palmTurn * cs * sz;
 
         const float halfLength = (VrHand_ChildSized() ? 548.0f : 862.0f) * 0.5f;
-        const float face = surfaceSide * (kShutterSurface + faceOffset);
-        mf16[12] = door->dyna.actor.world.pos.x + localX * cs + face * sn;
+        mf16[12] = door->dyna.actor.world.pos.x + localX * cs + localZ * sn;
         mf16[13] = door->dyna.actor.world.pos.y + localY - sy * halfLength;
-        mf16[14] = door->dyna.actor.world.pos.z - localX * sn + face * cs;
+        mf16[14] = door->dyna.actor.world.pos.z - localX * sn + localZ * cs;
     };
     // Hover detection already resolved the exact door, point and faces during the actor update.
     // Reusing that result guarantees the open mesh and the pinned pose cannot disagree.
-    const float faceOffset = state.latched ? 0.0f : 1.0f;
     const float orientationSide = state.latched ? state.surfaceFace : state.visualFace;
-    placeOpenPalm(state.localX, state.localY, orientationSide, state.surfaceFace, faceOffset);
+    placeOpenPalm(state.localX, state.localY, state.localZ, orientationSide);
     return true;
 }
 
@@ -1153,11 +1353,11 @@ extern "C" bool VrDoor_Tick(EnDoor* door, PlayState* play) {
 
     if (sPullRefValid) {
         float delta = HandPolar(door, sHand, sHandleSide) - sPullStartRad;
-        while (delta > M_PI) delta -= 2.0f * M_PI;
-        while (delta < -M_PI) delta += 2.0f * M_PI;
+        while (delta > kPi) delta -= 2.0f * kPi;
+        while (delta < -kPi) delta += 2.0f * kPi;
         // The skeleton's hinge channel turns opposite the controller's polar motion. The gain also
         // maps OoT's oversized 60-unit leaf to a comfortable real-world arm arc.
-        float deg = sPullStartDeg - delta * (180.0f / M_PI) * CVarGetFloat("gVrDoorSwingGain", 1.75f);
+        float deg = sPullStartDeg - delta * (180.0f / kPi) * CVarGetFloat("gVrDoorSwingGain", 1.75f);
         deg = fmaxf(-kMaxOpenDeg, fminf(kMaxOpenDeg, deg));
         sAngle = (s16)(deg * (65536.0f / 360.0f));
         door->jointTable[3].z = sAngle;
@@ -1284,7 +1484,7 @@ extern "C" void VrDoor_ConstrainPlayerToLeaf(Actor* actor) {
     const float hingeOffset = HingeOffset();
     const float hingeLocal = handleX >= 0.0f ? -hingeOffset : hingeOffset;
     const float leafDir = handleX >= 0.0f ? 1.0f : -1.0f;
-    const float a = sAngle * (2.0f * M_PI / 65536.0f);
+    const float a = sAngle * (2.0f * kPi / 65536.0f);
     const float hx = sDoor->actor.world.pos.x + right[0] * hingeLocal;
     const float hz = sDoor->actor.world.pos.z + right[2] * hingeLocal;
     const float ex = hx + right[0] * (leafDir * 2.0f * hingeOffset * cosf(a)) +
@@ -1322,7 +1522,7 @@ extern "C" bool VrDoor_PinnedHandMatrix(Player* player, int32_t hand, float* mf1
     float handle[3], right[3], normal[3];
     HandlePoint(sDoor, sHandleSide, sKnobFace, handle);
     Axes(sDoor, right, normal);
-    const float a = sAngle * (2.0f * M_PI / 65536.0f);
+    const float a = sAngle * (2.0f * kPi / 65536.0f);
     const float localX = sGrabOffsetLocal[0] * cosf(a) + sGrabOffsetLocal[2] * sinf(a);
     const float localZ = -sGrabOffsetLocal[0] * sinf(a) + sGrabOffsetLocal[2] * cosf(a);
     mf16[12] = handle[0] + right[0] * localX + normal[0] * localZ;

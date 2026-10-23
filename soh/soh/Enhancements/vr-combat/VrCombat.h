@@ -597,6 +597,9 @@ void VrShutter_FinishClose(struct DoorShutter* door, struct PlayState* play);
 bool VrShutter_ConsumePhysicalClose(struct DoorShutter* door);
 float VrShutter_OpenHeight(struct DoorShutter* door);
 bool VrShutter_PinnedHandMatrix(struct Player* player, int32_t hand, float* mf16);
+// Returns the OTR display-list path for the rigid slab selected by Door_Shutter.
+const char* VrShutter_GetDisplayListPath(const struct DoorShutter* door);
+bool VrShutter_RenderFlipped(const struct DoorShutter* door, const struct PlayState* play);
 // Suppresses only the player's wall sweep inside the centre of a sufficiently open physical doorway.
 bool VrDoor_AllowsWallPass(struct Actor* actor, const float* nextPos3, const float* prevPos3);
 // Replaces the removed closed-door wall with a player-only collider along the rotated physical leaf.

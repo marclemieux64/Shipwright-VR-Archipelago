@@ -121,6 +121,26 @@ static ShutterInfo sShutterInfo[] = {
     { object_ouke_haka_DL_0000C0, gDoorMetalBarsDL, 130, 12, 20, 15 },
 };
 
+const char* VrShutter_GetDisplayListPath(const DoorShutter* door) {
+    if (door == NULL || door->gfxType >= ARRAY_COUNT(sShutterInfo)) {
+        return NULL;
+    }
+    return (const char*)sShutterInfo[door->gfxType].a;
+}
+
+bool VrShutter_RenderFlipped(const DoorShutter* door, const PlayState* play) {
+    if (door == NULL || play == NULL || door->gfxType >= ARRAY_COUNT(sShutterInfo) ||
+        sShutterInfo[door->gfxType].b == NULL) {
+        return false;
+    }
+    TransitionActorEntry* entry = &play->transiActorCtx.list[(u16)door->dyna.actor.params >> 0xA];
+    if (play->roomCtx.prevRoom.num >= 0 || entry->sides[0].room == entry->sides[1].room) {
+        s32 yaw = Math_Vec3f_Yaw(&play->view.eye, &door->dyna.actor.world.pos);
+        return ABS((s16)(door->dyna.actor.shape.rot.y - yaw)) < 0x4000;
+    }
+    return door->dyna.actor.room == entry->sides[0].room;
+}
+
 static s8 D_80998224[] = {
     -1, -1, -1, -1, 0, 6, 1, -1, 0, -1, -1, -1,
 };
