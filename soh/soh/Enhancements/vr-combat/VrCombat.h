@@ -619,6 +619,14 @@ bool VrDoor_IsPhysicalActive(struct EnDoor* door);
 // While a handle is held, pin the rendered hand to the point it took hold on the moving leaf.
 // The physical controller continues to drive the door, but cannot visually stretch away from it.
 bool VrDoor_PinnedHandMatrix(struct Player* player, int32_t hand, float* mf16);
+
+// Gerudo Fortress cell grates use their own actor but share the two-hand vertical-lift language
+// of physical shutters. -1 means the original non-VR path should run; 2 commits the open state.
+struct DoorGerudo;
+int32_t VrGerudoDoor_Tick(struct DoorGerudo* door, struct PlayState* play);
+bool VrGerudoDoor_GripConsumed(int32_t hand, uint16_t mask);
+bool VrGerudoDoor_HoldsHand(int32_t hand);
+bool VrGerudoDoor_PinnedHandMatrix(struct Player* player, int32_t hand, float* mf16);
 // Physical dungeon keys (VrKeys.cpp). Two-dimensional inventory icons on the left wrist can be
 // grabbed to create a held key; compatible vanilla locks remain responsible for consuming it.
 void VrKeys_Tick(struct PlayState* play, struct Player* player);
@@ -635,6 +643,7 @@ struct EnDoor;
 struct DoorShutter;
 bool VrKeys_TryEnDoor(struct EnDoor* door, struct PlayState* play);
 bool VrKeys_TryShutter(struct DoorShutter* door, struct PlayState* play);
+bool VrKeys_TryGerudoDoor(struct DoorGerudo* door, struct PlayState* play);
 // Small body collider (VrBody.cpp, gVrSmallBody — VR first person with roomscale). Link's body keeps
 // the vanilla wall radius for everything; the view (and the hands on the same anchor) is a small
 // circle (gVrSmallBodyRadiusCm) living inside that big circle, so it can get closer to walls than the

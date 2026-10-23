@@ -7,6 +7,7 @@ extern "C" {
 #include "objects/object_gi_bosskey/object_gi_bosskey.h"
 #include "overlays/actors/ovl_En_Door/z_en_door.h"
 #include "overlays/actors/ovl_Door_Shutter/z_door_shutter.h"
+#include "overlays/actors/ovl_Door_Gerudo/z_door_gerudo.h"
 extern PlayState* gPlayState;
 }
 
@@ -320,6 +321,11 @@ extern "C" bool VrKeys_TryShutter(DoorShutter* door, PlayState* play) {
     }
     return door->doorType == SHUTTER_KEY_LOCKED && HasSmall() &&
            TryInsert(&door->dyna.actor, door->gfxType == 6 ? 80.0f : 50.0f, Kind::Small);
+}
+
+extern "C" bool VrKeys_TryGerudoDoor(DoorGerudo* door, PlayState* play) {
+    return play != nullptr && door != nullptr && door->unk_166 != 0 && HasSmall() &&
+           TryInsert(&door->dyna.actor, 50.0f, Kind::Small);
 }
 
 extern "C" void VrKeys_Reset(void) {
