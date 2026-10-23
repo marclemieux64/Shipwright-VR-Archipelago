@@ -45,6 +45,7 @@ void DoorShutter_Open(DoorShutter* this, PlayState* play);
 void DoorShutter_Unbar(DoorShutter* this, PlayState* play);
 void DoorShutter_Close(DoorShutter* this, PlayState* play);
 void DoorShutter_JabuDoorClose(DoorShutter* this, PlayState* play);
+s32 DoorShutter_UpdateBarsClosed(DoorShutter* this, PlayState* play, f32 arg2);
 void DoorShutter_WaitPlayerSurprised(DoorShutter* this, PlayState* play);
 void DoorShutter_GohmaBlockFall(DoorShutter* this, PlayState* play);
 void DoorShutter_GohmaBlockBounce(DoorShutter* this, PlayState* play);
@@ -209,6 +210,43 @@ void DoorShutter_SetupAction(DoorShutter* this, DoorShutterActionFunc actionFunc
     this->actionTimer = 0;
 }
 
+// Resolve only the immutable visual assigned to a physical room side. Unlike SetupDoor this does
+// not change the action, bars, or unlock state, so it is safe to run while a fully raised VR door
+// selects the material it will retain throughout its descent.
+u8 DoorShutter_GetGfxTypeForRoom(DoorShutter* this, PlayState* play, s8 room) {
+    TransitionActorEntry* transitionEntry = &play->transiActorCtx.list[(u16)this->dyna.actor.params >> 0xA];
+    s8 frontRoom = transitionEntry->sides[0].room;
+    s32 doorType = this->doorType;
+    ShutterObjectInfo* objectInfo = &sObjectInfo[this->styleType];
+
+    if (doorType != SHUTTER_KEY_LOCKED) {
+        if (frontRoom == transitionEntry->sides[1].room) {
+            // Same-room transitions have no persistent room-side identity. Preserve the initialized
+            // material instead of allowing player/head orientation to rewrite it during gameplay.
+            return this->gfxType;
+        }
+        if (frontRoom == room) {
+            if (doorType == SHUTTER_FRONT_SWITCH_BACK_CLEAR) {
+                doorType = SHUTTER_FRONT_CLEAR;
+            } else {
+                doorType = (doorType == SHUTTER_BOSS) ? SHUTTER_BACK_LOCKED : SHUTTER;
+            }
+        }
+    }
+    return (doorType == SHUTTER) ? objectInfo->index1 : objectInfo->index2;
+}
+
+void DoorShutter_CacheSideGfxTypes(DoorShutter* this, PlayState* play) {
+    TransitionActorEntry* transitionEntry = &play->transiActorCtx.list[(u16)this->dyna.actor.params >> 0xA];
+
+    // Both display lists live in the already-loaded shutter object. Cache their stable room-side
+    // mapping once; no streaming, camera, or condition state may rewrite this mapping afterward.
+    this->gfxType = sObjectInfo[this->styleType].index1;
+    this->vrGfxTypeBySide[0] = DoorShutter_GetGfxTypeForRoom(this, play, transitionEntry->sides[0].room);
+    this->vrGfxTypeBySide[1] = DoorShutter_GetGfxTypeForRoom(this, play, transitionEntry->sides[1].room);
+    this->vrGfxCacheValid = 1;
+}
+
 s32 DoorShutter_SetupDoor(DoorShutter* this, PlayState* play) {
     TransitionActorEntry* transitionEntry = &play->transiActorCtx.list[(u16)this->dyna.actor.params >> 0xA];
     s8 frontRoom = transitionEntry->sides[0].room;
@@ -264,6 +302,7 @@ void DoorShutter_Init(Actor* thisx, PlayState* play2) {
     Actor_ProcessInitChain(&this->dyna.actor, sInitChain);
     this->dyna.actor.home.pos.z = this->dyna.actor.shape.yOffset;
     DynaPolyActor_Init(&this->dyna, DPM_UNK);
+    this->vrGfxCacheValid = 0;
     this->doorType = (this->dyna.actor.params >> 6) & 0xF;
     phi_a3 = D_80998224[this->doorType];
     if (phi_a3 < 0) {
@@ -342,6 +381,7 @@ void DoorShutter_SetupType(DoorShutter* this, PlayState* play) {
                 this->unk_164 = 7;
             }
         } else {
+            DoorShutter_CacheSideGfxTypes(this, play);
             DoorShutter_SetupDoor(this, play);
         }
     }
@@ -389,6 +429,10 @@ s32 DoorShutter_GetPlayerSide(DoorShutter* this, PlayState* play) {
 }
 
 void DoorShutter_WaitClear(DoorShutter* this, PlayState* play) {
+    // Usually setup enters this action with the bars already fully closed. A physical VR close
+    // deliberately resets them to zero so this same native step function visibly lowers the bars
+    // after the door has covered the doorway instead of making them pop into existence.
+    DoorShutter_UpdateBarsClosed(this, play, 1.0f);
     if (Flags_GetClear(play, this->dyna.actor.room) || Flags_GetTempClear(play, this->dyna.actor.room)) {
         Flags_SetClear(play, this->dyna.actor.room);
         DoorShutter_SetupAction(this, DoorShutter_Unbar);
@@ -411,9 +455,6 @@ void DoorShutter_Unopenable(DoorShutter* this, PlayState* play) {
 }
 
 void DoorShutter_Idle(DoorShutter* this, PlayState* play) {
-    // SOH [VR] Jabu's flesh shutter opens from an open-palm touch. Room streaming and safe close
-    // use the same physical-door lifecycle as rigid shutters.
-    s32 vrJabuOpen = (this->gfxType == 3) && VrJabuDoor_Tick(this, play);
     s32 vrKeyOpen = VrKeys_TryShutter(this, play);
     if (vrKeyOpen) {
         // A physical key turn unlocks the shutter; it does not also activate it. In particular,
@@ -451,6 +492,12 @@ void DoorShutter_Idle(DoorShutter* this, PlayState* play) {
             }
         }
     } else {
+        // In first-person VR the flesh membrane is exclusively physical: native body proximity
+        // must not expose the ordinary sliding-door interaction when neither hand touched it.
+        if (this->gfxType == 3 && CVarGetInteger("gVrPhysicalDoors", 1) && VR_IsInitialized() &&
+            VR_GetFirstPerson() && !VR_IsFlatScreen() && CVarGetInteger("gVrMotionHands", 1)) {
+            return;
+        }
         s32 doorDirection = DoorShutter_GetPlayerSide(this, play);
 
         if (doorDirection != 0) {
@@ -467,10 +514,6 @@ void DoorShutter_Idle(DoorShutter* this, PlayState* play) {
                         return;
                     }
                     player->doorTimer = 10;
-                }
-                if (vrJabuOpen) {
-                    this->unk_164 = 1;
-                    return;
                 }
                 player->doorType = PLAYER_DOORTYPE_SLIDING;
                 player->doorDirection = doorDirection;
@@ -548,6 +591,11 @@ s32 DoorShutter_UpdateBarsClosed(DoorShutter* this, PlayState* play, f32 arg2) {
 }
 
 void DoorShutter_BarAndWaitSwitchFlag(DoorShutter* this, PlayState* play) {
+    // A switch may re-bar the membrane while its touch-triggered room preload is in flight.
+    // Cancel that latch as soon as loading permits; it must require a new touch after unbarring.
+    if (this->gfxType == 3) {
+        VrJabuDoor_Cancel(this, play);
+    }
     if (DoorShutter_UpdateBarsClosed(this, play, 1.0f)) {
         if (Flags_GetSwitch(play, this->dyna.actor.params & 0x3F)) {
             DoorShutter_SetupAction(this, DoorShutter_Unbar);
@@ -572,12 +620,37 @@ void DoorShutter_UnbarredCheckSwitchFlag(DoorShutter* this, PlayState* play) {
 }
 
 void DoorShutter_Open(DoorShutter* this, PlayState* play) {
-    if (DECR(this->unlockTimer) == 0 && play->roomCtx.status == 0 && DoorShutter_UpdateOpening(this, play) != 0) {
+    // A touched Jabu membrane can visibly retract while its destination room finishes loading.
+    // Wall passage is still denied by VrDoor_AllowsWallPass until that load completes.
+    if (DECR(this->unlockTimer) == 0 && (play->roomCtx.status == 0 || this->gfxType == 3) &&
+        DoorShutter_UpdateOpening(this, play) != 0) {
         if (VrShutter_KeepOpen(this, play)) {
             return;
         }
         if (((this->doorType == SHUTTER_BOSS) ? 20.0f : 50.0f) < this->dyna.actor.xzDistToPlayer) {
-            if (DoorShutter_SetupDoor(this, play)) {
+            // Native setup selects the eventual closed-side model and bars immediately. Preserve
+            // the open-side visuals throughout a physical VR close, then apply the resolved native
+            // state only after the shutter has completely covered the doorway.
+            s32 vrPhysicalClosing = VrShutter_IsPhysicalClosePending(this);
+            f32 vrOpenBarsClosedAmount = this->barsClosedAmount;
+            if (vrPhysicalClosing) {
+                s32 vrCloseRoom = VrShutter_GetPhysicalCloseRoom(this, play);
+                if (vrCloseRoom >= 0) {
+                    // The slab is fully raised and outside the doorway here. Select the stable
+                    // material belonging to the side on which it will close, before any part of
+                    // the door becomes visible, then never alter it during the descent.
+                    TransitionActorEntry* vrEntry =
+                        &play->transiActorCtx.list[(u16)this->dyna.actor.params >> 0xA];
+                    if (this->vrGfxCacheValid && vrCloseRoom == vrEntry->sides[0].room) {
+                        this->gfxType = this->vrGfxTypeBySide[0];
+                    } else if (this->vrGfxCacheValid && vrCloseRoom == vrEntry->sides[1].room) {
+                        this->gfxType = this->vrGfxTypeBySide[1];
+                    } else {
+                        this->gfxType = DoorShutter_GetGfxTypeForRoom(this, play, vrCloseRoom);
+                    }
+                }
+                this->barsClosedAmount = vrOpenBarsClosedAmount;
+            } else if (DoorShutter_SetupDoor(this, play)) {
                 this->dyna.actor.velocity.y = 30.0f;
             }
             if (this->gfxType != 3) {
@@ -620,8 +693,12 @@ void DoorShutter_Unbar(DoorShutter* this, PlayState* play) {
 void DoorShutter_SetupClosed(DoorShutter* this, PlayState* play) {
     Player* player = GET_PLAYER(play);
     s8 room = this->dyna.actor.room;
+    bool vrPhysicalClose = VrShutter_ConsumePhysicalClose(this);
 
-    if (this->dyna.actor.room >= 0) {
+    // VrShutter_FinishClose already committed the retained room pair and assigned this actor to
+    // the room Link occupies. Running the stock room swap a second time can reverse that result,
+    // making SetupDoor resolve the opposite texture and even the opposite lock condition.
+    if (!vrPhysicalClose && this->dyna.actor.room >= 0) {
         Vec3f vec;
 
         Actor_WorldToActorCoords(&this->dyna.actor, &vec, &player->actor.world.pos);
@@ -639,7 +716,6 @@ void DoorShutter_SetupClosed(DoorShutter* this, PlayState* play) {
     }
     this->unk_164 = 0;
     this->dyna.actor.velocity.y = 0.0f;
-    bool vrPhysicalClose = VrShutter_ConsumePhysicalClose(this);
     bool vrGanonStairRoom = false;
     if (vrPhysicalClose && play->sceneNum == SCENE_GANONS_TOWER) {
         // The ascent stair landings have no encounter of their own and therefore need not carry a
@@ -657,25 +733,48 @@ void DoorShutter_SetupClosed(DoorShutter* this, PlayState* play) {
             enemy = enemy->next;
         }
     }
-    bool vrConditionAlreadyClear =
-        vrPhysicalClose && this->dyna.actor.room >= 0 &&
-        (Flags_GetClear(play, this->dyna.actor.room) || Flags_GetTempClear(play, this->dyna.actor.room) ||
-         Flags_GetSwitch(play, this->dyna.actor.params & 0x3F) || vrGanonStairRoom);
-    // A physical VR passage has already been performed by the player. Do not invoke the stock
-    // surprised-player cutscene here: it halts every actor for 30 frames while the old room is
-    // released, which looks like the newly entered room has frozen.
-    // A side-dependent FRONT_CLEAR/FRONT_SWITCH setup can momentarily recreate bars after a
-    // physical room handoff even though the destination condition is already satisfied. Preserve
-    // the proven unbarred state; a fresh room load would reach this same Idle state normally.
-    if (vrConditionAlreadyClear) {
+    if (vrPhysicalClose) {
+        // Room ownership and the player's final side are now settled, so native setup can make the
+        // authoritative decision for every door type. The only exception remains empty Ganon stair
+        // landings, whose intended open state has no corresponding room-clear flag.
+        if (vrGanonStairRoom) {
+            this->barsClosedAmount = 0.0f;
+            DoorShutter_SetupAction(this, DoorShutter_Idle);
+            return;
+        }
+        s32 vrPreserveEntryUnlock = VrShutter_ConsumePreservedEntryUnlock(this);
+        u8 vrClosedGfxType = this->gfxType;
+        DoorShutter_SetupDoor(this, play);
+        // Lock resolution is live, but material resolution was completed while the slab was fully
+        // raised. Never allow SetupDoor or a later room-state change to rewrite the visible side.
+        this->gfxType = vrClosedGfxType;
+        if (vrPreserveEntryUnlock) {
+            // The source side was already unbarred when VR accepted the grab. A retained-room
+            // transition must not make that same side demand its condition for a second time.
+            DoorShutter_SetupAction(this, DoorShutter_Idle);
+        }
+        // SetupDoor selects the correct action and front/back display list. If it requires bars,
+        // begin from zero so that action performs the native falling animation; otherwise this
+        // simply preserves the unbarred state it selected.
         this->barsClosedAmount = 0.0f;
-        DoorShutter_SetupAction(this, DoorShutter_Idle);
         return;
     }
-    if (DoorShutter_SetupDoor(this, play) && !vrPhysicalClose &&
-        !(player->stateFlags1 & PLAYER_STATE1_CARRYING_ACTOR)) {
-        DoorShutter_SetupAction(this, DoorShutter_WaitPlayerSurprised);
-        Player_SetCsActionWithHaltedActors(play, NULL, 2);
+    s32 vrSetupBarred = DoorShutter_SetupDoor(this, play);
+    if (vrSetupBarred) {
+        const bool vrPhysicalFirstPerson = CVarGetInteger("gVrPhysicalDoors", 1) && VR_IsInitialized() &&
+                                           VR_GetFirstPerson() && !VR_IsFlatScreen() &&
+                                           CVarGetInteger("gVrMotionHands", 1);
+        if (vrPhysicalFirstPerson) {
+            // Native third-person traversal briefly locks Link into a surprised animation when a
+            // shutter bars behind him. In physical first-person VR the player already walked the
+            // doorway manually; preserve SetupDoor's live lock state and falling-bar action, but
+            // never seize locomotion or insert the delayed surprise state.
+            return;
+        }
+        if (!(player->stateFlags1 & PLAYER_STATE1_CARRYING_ACTOR)) {
+            DoorShutter_SetupAction(this, DoorShutter_WaitPlayerSurprised);
+            Player_SetCsActionWithHaltedActors(play, NULL, 2);
+        }
     }
 }
 
@@ -775,6 +874,20 @@ void DoorShutter_Update(Actor* thisx, PlayState* play) {
                                   this->actionFunc != DoorShutter_GohmaBlockBounce &&
                                   this->actionFunc != DoorShutter_PhantomGanonBarsRaise;
         if (vrInteractable) {
+            // Jabu membranes can be left in several native stationary actions depending on the
+            // transition side and puzzle type. Dispatch physical hover/grab centrally whenever the
+            // visible web is fully retracted instead of relying on DoorShutter_Idle alone.
+            if (this->gfxType == 3 && this->barsClosedAmount <= 0.001f && VrJabuDoor_Tick(this, play)) {
+                if (GameInteractor_Should(VB_JABU_PREVENT_RUTO_REENTER_BIGOCTO, true, player,
+                                          &this->dyna.actor)) {
+                    this->unk_164 = 1;
+                    this->dyna.actor.velocity.y = 0.0f;
+                    DoorShutter_SetupAction(this, DoorShutter_Open);
+                } else {
+                    VrJabuDoor_Cancel(this, play);
+                }
+                return;
+            }
             s32 vrDoor = VrShutter_Tick(this, play);
             if (vrDoor == 2) {
                 DoorShutter_SetupAction(this, DoorShutter_Open);
@@ -878,8 +991,13 @@ void DoorShutter_Draw(Actor* thisx, PlayState* play) {
         } else {
             if (sp70->b != NULL) {
                 TransitionActorEntry* transitionEntry = &play->transiActorCtx.list[(u16)this->dyna.actor.params >> 0xA];
+                bool vrClosingFlipped;
 
-                if (play->roomCtx.prevRoom.num >= 0 ||
+                if (VrShutter_GetClosingRenderFlipped(this, &vrClosingFlipped)) {
+                    if (vrClosingFlipped) {
+                        Matrix_RotateY(M_PI, MTXMODE_APPLY);
+                    }
+                } else if (play->roomCtx.prevRoom.num >= 0 ||
                     transitionEntry->sides[0].room == transitionEntry->sides[1].room) {
                     s32 yaw = Math_Vec3f_Yaw(&play->view.eye, &this->dyna.actor.world.pos);
 
