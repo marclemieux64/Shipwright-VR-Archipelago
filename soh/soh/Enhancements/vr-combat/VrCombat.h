@@ -578,11 +578,11 @@ void VrBlock_GetDebug(VrBlockDebug* out);
 struct EnDoor;
 bool VrDoor_Tick(struct EnDoor* door, struct PlayState* play);
 bool VrDoor_GripConsumed(int32_t hand, uint16_t mask);
-// Jabu-Jabu's radial flesh shutter opens by gripping opposite sides and spreading both hands.
-// Tick returns true once the spread is wide enough; the native shutter code remains responsible
-// for locks, switches, opening animation and room transition.
+// Jabu-Jabu's unbarred radial flesh shutter reuses shutter hover/palm pinning, but opens completely
+// from a single hand grip with no lift gesture. The native actor retains its opening/closing animation.
 struct DoorShutter;
 bool VrJabuDoor_Tick(struct DoorShutter* door, struct PlayState* play);
+void VrJabuDoor_Cancel(struct DoorShutter* door, struct PlayState* play);
 bool VrJabuDoor_GripConsumed(int32_t hand, uint16_t mask);
 // An unlocked, fully unbarred rigid shutter can be gripped with both hands and physically lifted in VR.
 // This covers Boss Doors and ordinary dungeon shutters; Jabu and special encounter blockers are excluded.
@@ -592,9 +592,13 @@ bool VrShutter_GripConsumed(int32_t hand, uint16_t mask);
 // While hovering or latched, the hand is rendered as a bare open palm instead of its equipped item.
 bool VrShutter_HoldsHand(int32_t hand);
 bool VrShutter_KeepOpen(struct DoorShutter* door, struct PlayState* play);
+bool VrShutter_IsPhysicalClosePending(struct DoorShutter* door);
+int32_t VrShutter_GetPhysicalCloseRoom(struct DoorShutter* door, struct PlayState* play);
+bool VrShutter_GetClosingRenderFlipped(const struct DoorShutter* door, bool* flipped);
 // Completes a cancelled physical shutter's room rollback only after the slab reaches fully closed.
 void VrShutter_FinishClose(struct DoorShutter* door, struct PlayState* play);
 bool VrShutter_ConsumePhysicalClose(struct DoorShutter* door);
+bool VrShutter_ConsumePreservedEntryUnlock(struct DoorShutter* door);
 float VrShutter_OpenHeight(struct DoorShutter* door);
 bool VrShutter_PinnedHandMatrix(struct Player* player, int32_t hand, float* mf16);
 // Returns the OTR display-list path for the rigid slab selected by Door_Shutter.
