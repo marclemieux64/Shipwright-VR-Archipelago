@@ -456,6 +456,7 @@ void PadMgr_HandleRetraceMsg(PadMgr* padMgr) {
                         VrJabuDoor_GripConsumed(vrHandIdx, sVrBtnMasks[vrBtnIdx]) ||
                         VrShutter_GripConsumed(vrHandIdx, sVrBtnMasks[vrBtnIdx]) ||
                         VrGerudoDoor_GripConsumed(vrHandIdx, sVrBtnMasks[vrBtnIdx]) ||
+                        VrChest_GripConsumed(vrHandIdx, sVrBtnMasks[vrBtnIdx]) ||
                         VrClimb_GripConsumed(vrHandIdx, sVrBtnMasks[vrBtnIdx]) ||
                         VrArchery_PinchConsumed(vrHandIdx, sVrBtnMasks[vrBtnIdx]) ||
                         VrCombat_AimTriggerConsumed(vrHandIdx, sVrBtnMasks[vrBtnIdx])) {

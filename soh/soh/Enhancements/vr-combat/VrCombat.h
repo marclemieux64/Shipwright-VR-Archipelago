@@ -627,6 +627,32 @@ int32_t VrGerudoDoor_Tick(struct DoorGerudo* door, struct PlayState* play);
 bool VrGerudoDoor_GripConsumed(int32_t hand, uint16_t mask);
 bool VrGerudoDoor_HoldsHand(int32_t hand);
 bool VrGerudoDoor_PinnedHandMatrix(struct Player* player, int32_t hand, float* mf16);
+
+// Physical treasure chests (VrChest.cpp, gVrPhysicalChests). Both hands must grip anywhere across
+// the front lip opposite the hinge and lift together; reaching the fully open angle commits the
+// ordinary chest reward transaction. The stock path remains untouched outside first-person VR.
+struct EnBox;
+struct GetItemEntry;
+// 0 = inactive, 1 = hovering/holding/physically opening, 2 = reached fully open this tick.
+int32_t VrChest_Tick(struct EnBox* chest, struct PlayState* play);
+// Captures the exact model matrix used to draw lid limb 3, allowing hover placement to use the
+// rendered mesh rather than duplicating the chest skeleton transform.
+void VrChest_RecordLidMatrix(struct EnBox* chest, const float* mf16);
+bool VrChest_GripConsumed(int32_t hand, uint16_t mask);
+bool VrChest_HoldsHand(int32_t hand);
+bool VrChest_PinnedHandMatrix(struct Player* player, int32_t hand, float* mf16);
+bool VrChest_OpenRequested(struct EnBox* chest);
+void VrChest_ConsumeOpenRequest(struct EnBox* chest);
+// The physical path runs the ordinary reward transaction in the background so Link retains
+// locomotion. These calls keep the already-visible chest item alive for that entire transaction.
+void VrChest_AwardStarted(struct EnBox* chest, const struct GetItemEntry* entry);
+void VrChest_AwardFinished(struct EnBox* chest);
+bool VrChest_AwardActive(void);
+// Repositions the normal get-item model over the opened chest. `out` is the reference point used
+// by Player_DrawGetItemImpl, so the caller's normal 14-unit vertical offset still applies.
+bool VrChest_GetItemHoldUpPos(struct PlayState* play, struct Player* player, float* out);
+// Draws the single item model while it is inside/rising from the chest and throughout the reward.
+void VrChest_DrawItem(struct EnBox* chest, struct PlayState* play);
 // Physical dungeon keys (VrKeys.cpp). Two-dimensional inventory icons on the left wrist can be
 // grabbed to create a held key; compatible vanilla locks remain responsible for consuming it.
 void VrKeys_Tick(struct PlayState* play, struct Player* player);

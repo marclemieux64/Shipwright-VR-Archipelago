@@ -1638,6 +1638,7 @@ s32 Player_OverrideLimbDrawGameplayVRFirstPerson(PlayState* play, s32 limbIndex,
             s32 vrHand = (limbIndex == PLAYER_LIMB_R_HAND) ? rightLimbVr : (rightLimbVr ^ 1);
             s32 vrShutterPalm = VrShutter_HoldsHand(vrHand);
             s32 vrGerudoDoorPalm = VrGerudoDoor_HoldsHand(vrHand);
+            s32 vrChestPalm = VrChest_HoldsHand(vrHand);
             // A physical dungeon key is held in a visibly closed fist. The shutter open-palm model
             // is chosen below only after that exact shutter state successfully supplies the pin.
             if (VrKeys_HoldsHand(vrHand)) {
@@ -1680,13 +1681,16 @@ s32 Player_OverrideLimbDrawGameplayVRFirstPerson(PlayState* play, s32 limbIndex,
                 s32 vrPinned = VrBlock_PinnedHandMatrix(this, vrHand, &handMtx.mf[0][0]) ||
                                VrCarry_PinnedHandMatrix(this, vrHand, &handMtx.mf[0][0]) ||
                                VrDoor_PinnedHandMatrix(this, vrHand, &handMtx.mf[0][0]);
+                s32 vrChestPinned = !vrPinned && vrChestPalm &&
+                                    VrChest_PinnedHandMatrix(this, vrHand, &handMtx.mf[0][0]);
+                vrPinned = vrPinned || vrChestPinned;
                 s32 vrGerudoDoorPinned = !vrPinned && vrGerudoDoorPalm &&
                                          VrGerudoDoor_PinnedHandMatrix(this, vrHand, &handMtx.mf[0][0]);
                 vrPinned = vrPinned || vrGerudoDoorPinned;
                 s32 vrShutterPinned = !vrPinned && vrShutterPalm &&
                                       VrShutter_PinnedHandMatrix(this, vrHand, &handMtx.mf[0][0]);
                 vrPinned = vrPinned || vrShutterPinned;
-                if (vrGerudoDoorPinned || vrShutterPinned) {
+                if (vrChestPinned || vrGerudoDoorPinned || vrShutterPinned) {
                     // Physical surface poses rebuild a positive-determinant matrix, so draw the
                     // native anatomical mesh for the controller with normal culling.
                     if (vrHand == VR_HAND_LEFT) {
