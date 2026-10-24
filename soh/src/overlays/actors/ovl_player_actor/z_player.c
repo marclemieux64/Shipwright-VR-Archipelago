@@ -320,6 +320,8 @@ void Player_Action_8084E368(Player* this, PlayState* play);
 void Player_Action_8084E3C4(Player* this, PlayState* play);
 void Player_Action_8084E604(Player* this, PlayState* play);
 void Player_Action_8084E6D4(Player* this, PlayState* play);
+void Player_VrChestStartAward(PlayState* play, Player* this, EnBox* chest, GetItemEntry* entry);
+void Player_VrChestAwardUpdate(PlayState* play, Player* this);
 void Player_Action_8084E9AC(Player* this, PlayState* play);
 void Player_Action_8084EAC0(Player* this, PlayState* play);
 void Player_Action_SwingBottle(Player* this, PlayState* play);
@@ -8134,11 +8136,15 @@ s32 Player_ActionHandler_2(Player* this, PlayState* play) {
                 this->getItemId = GI_NONE;
                 this->getItemEntry = (GetItemEntry)GET_ITEM_NONE;
             }
-        } else if (CHECK_BTN_ALL(sControlInput->press.button, BTN_A) &&
+        } else if (((CHECK_BTN_ALL(sControlInput->press.button, BTN_A) &&
+                     !(interactedActor->id == ACTOR_EN_BOX && VrChest_AwardActive())) ||
+                    (interactedActor->id == ACTOR_EN_BOX && VrChest_OpenRequested((EnBox*)interactedActor))) &&
                    !(this->stateFlags1 & PLAYER_STATE1_CARRYING_ACTOR) &&
                    !(this->stateFlags2 & PLAYER_STATE2_UNDERWATER)) {
             if (this->getItemId != GI_NONE) {
                 if (GameInteractor_Should(VB_OPEN_CHEST, true, interactedActor)) {
+                    s32 vrPhysicalChest =
+                        interactedActor->id == ACTOR_EN_BOX && VrChest_OpenRequested((EnBox*)interactedActor);
                     GetItemEntry giEntry;
                     if (this->getItemEntry.objectId == OBJECT_INVALID) {
                         giEntry = ItemTable_Retrieve(-this->getItemId);
@@ -8154,7 +8160,20 @@ s32 Player_ActionHandler_2(Player* this, PlayState* play) {
                         }
                     }
 
-                    if (GameInteractor_Should(VB_GIVE_ITEM_FROM_CHEST, true, chest)) {
+                    s32 giveChestItem = GameInteractor_Should(VB_GIVE_ITEM_FROM_CHEST, true, chest);
+                    if (vrPhysicalChest) {
+                        // The physical lid already supplied the animation and presentation. Run
+                        // the exact stock reward/message state machine alongside Link's current
+                        // action instead of replacing locomotion with the get-item cutscene.
+                        VrChest_ConsumeOpenRequest(chest);
+                        func_8083AE40(this, giEntry.objectId);
+                        if (giveChestItem) {
+                            Player_VrChestStartAward(play, this, chest, &giEntry);
+                        }
+                        return 1;
+                    }
+
+                    if (giveChestItem) {
                         Player_SetupWaitForPutAway(play, this, func_8083A434);
                     }
                     this->stateFlags1 |=
@@ -14098,6 +14117,10 @@ void Player_Update(Actor* thisx, PlayState* play) {
         Player_UpdateCommon(this, play, &sp44);
     }
 
+    // A physically opened chest keeps the normal player action alive. Its get-item transaction
+    // advances here independently, so the textbox/fanfare does not freeze locomotion.
+    Player_VrChestAwardUpdate(play, this);
+
     MREG(52) = this->actor.world.pos.x;
     MREG(53) = this->actor.world.pos.y;
     MREG(54) = this->actor.world.pos.z;
@@ -16023,6 +16046,50 @@ s32 func_8084DFF4(PlayState* play, Player* this) {
     }
 
     return 0;
+}
+
+// The stock reward processor stores its phase in the active Player action. Physical chests must
+// not replace that action, so preserve the locomotion action's variable and lend the processor a
+// dedicated phase only for the duration of this call. This deliberately reuses func_8084DFF4 in
+// full, retaining randomizer delivery, pending flags, equip prompts, ice traps, special messages,
+// and fanfare behavior without duplicating any of those rules.
+static s32 sVrChestAwardPhase = -1;
+static EnBox* sVrChestAwardChest = NULL;
+
+void Player_VrChestStartAward(PlayState* play, Player* this, EnBox* chest, GetItemEntry* entry) {
+    if (play == NULL || this == NULL || chest == NULL || entry == NULL) {
+        return;
+    }
+
+    sVrChestAwardPhase = 0;
+    sVrChestAwardChest = chest;
+    this->getItemEntry = *entry;
+    this->getItemId = ABS(entry->getItemId);
+    this->getItemEntry.getItemId = ABS(this->getItemEntry.getItemId);
+    this->unk_862 = 0; // VrChest_DrawItem remains the only visible copy.
+    VrChest_AwardStarted(chest, entry);
+}
+
+void Player_VrChestAwardUpdate(PlayState* play, Player* this) {
+    s32 savedActionVar;
+    s32 finished;
+
+    if (sVrChestAwardPhase < 0 || play == NULL || this == NULL) {
+        return;
+    }
+
+    savedActionVar = this->av1.actionVar1;
+    this->av1.actionVar1 = sVrChestAwardPhase;
+    finished = func_8084DFF4(play, this);
+    sVrChestAwardPhase = this->av1.actionVar1;
+    this->av1.actionVar1 = savedActionVar;
+
+    if (finished) {
+        VrChest_AwardFinished(sVrChestAwardChest);
+        sVrChestAwardChest = NULL;
+        sVrChestAwardPhase = -1;
+        this->unk_862 = 0;
+    }
 }
 
 void Player_Action_8084E1EC(Player* this, PlayState* play) {

@@ -1696,6 +1696,11 @@ void SohMenu::AddMenuVRSettings() {
             "Ordinary unlocked hinged doors can be opened by grabbing the handle, turning it, then "
             "pushing or pulling the leaf around its hinge. Locked and special doors retain their "
             "original controls. VR only."));
+    AddWidget(gameplayPath, "Physical Chests", WIDGET_CVAR_CHECKBOX)
+        .CVar("gVrPhysicalChests")
+        .Options(CheckboxOptions().DefaultValue(false).Tooltip(
+            "First-person VR only: place both hands anywhere on an unopened chest lid, hold both grips, "
+            "and lift to open it. The item rises from the opened chest before its normal message and fanfare."));
     AddWidget(gameplayPath, "Show Door Grab Markers", WIDGET_CVAR_CHECKBOX)
         .CVar("gVrDoorShowGrabMarkers")
         .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalDoors", 1); })
